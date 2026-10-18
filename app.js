@@ -1,0 +1,731 @@
+(function () {
+  'use strict';
+  const CFG = window.APP_CONFIG;
+  const VEHICLES = window.VEHICLES;
+  const CHECKLISTS = window.CHECKLISTS;
+  const $ = (s, el) => (el || document).querySelector(s);
+  const $$ = (s, el) => Array.from((el || document).querySelectorAll(s));
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  const ICON = {
+    home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>',
+    cal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
+    plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h9"/></svg>',
+    alert: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>',
+    hist: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+    users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></svg>',
+    cam: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>',
+    fire: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2s5 4.5 5 10a5 5 0 0 1-10 0c0-1.7.8-3 1.7-4.100C9 9.400 10 10.500 11 11c0-3 .5-6 1-9z"/><path d="M12 22a7 7 0 0 0 7-7c0-2-.8-3.700-2-5 .1 1 0 2-.6 3C16 9 14 6 12 4c.3 2-1 4-2.500 5.700C8.200 11.200 7 12.800 7 15a5 5 0 0 0 5 5z" opacity=".0"/></svg>'
+  };
+
+  const S = { token: null, user: null, view: 'beranda', users: [], form: null, temFilter: 'Open', openCount: 0, libur: [], calMonth: null };
+  try {
+    const raw = localStorage.getItem('pkppk_session');
+    if (raw) { const o = JSON.parse(raw); S.token = o.token; S.user = o.user; }
+  } catch (e) { /* abaikan */ }
+
+  function saveSession() {
+    try {
+      if (S.token) localStorage.setItem('pkppk_session', JSON.stringify({ token: S.token, user: S.user }));
+      else localStorage.removeItem('pkppk_session');
+    } catch (e) { /* abaikan */ }
+  }
+
+  /* ---------- util UI ---------- */
+  let loadCount = 0;
+  function loading(on, text) {
+    loadCount = Math.max(0, loadCount + (on ? 1 : -1));
+    $('#loading').classList.toggle('hidden', loadCount === 0);
+    if (text) $('#loading-text').textContent = text;
+    else if (on) $('#loading-text').textContent = 'Memuat…';
+  }
+  let toastT;
+  function toast(msg, isErr) {
+    const t = $('#toast');
+    t.textContent = msg;
+    t.className = 'toast show' + (isErr ? ' err' : '');
+    clearTimeout(toastT);
+    toastT = setTimeout(() => { t.className = 'toast'; }, 3200);
+  }
+  function fmtTgl(s) {
+    if (!s) return '';
+    const p = s.split('-');
+    return new Date(+p[0], +p[1] - 1, +p[2]).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+  function fmtHariPanjang(s) {
+    const p = s.split('-');
+    return new Date(+p[0], +p[1] - 1, +p[2]).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  }
+  function hariPendek(s) {
+    const p = s.split('-');
+    return new Date(+p[0], +p[1] - 1, +p[2]).toLocaleDateString('id-ID', { weekday: 'short' });
+  }
+  function ymd(d) {
+    const z = (n) => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate());
+  }
+  const vehicleOf = (k) => VEHICLES.find((v) => v.kode === k);
+  // Aturan hari: entri kalender menang; selain itu Sabtu & Minggu = libur; selain itu hari kerja.
+  function dayType(str) {
+    const e = S.libur.find((x) => x.tanggal === str);
+    if (e) {
+      return e.jenis === 'Kerja'
+        ? { libur: false, khusus: true, alasan: e.keterangan || 'Hari kerja khusus', sumber: 'kalender' }
+        : { libur: true, khusus: false, alasan: e.keterangan || 'Libur', sumber: 'kalender' };
+    }
+    const p = str.split('-');
+    const w = new Date(+p[0], +p[1] - 1, +p[2]).getDay();
+    if (w === 0 || w === 6) return { libur: true, khusus: false, alasan: w === 0 ? 'Hari Minggu' : 'Hari Sabtu', sumber: 'akhir pekan' };
+    return { libur: false, khusus: false, alasan: '', sumber: '' };
+  }
+  const initials = (n) => (n || '?').trim().split(/\s+/).slice(0, 2).map((x) => x[0]).join('').toUpperCase();
+
+  /* ---------- API ---------- */
+  async function api(action, data, opt) {
+    const silent = opt && opt.silent;
+    if (!CFG.API_URL || CFG.API_URL.indexOf('GANTI_') === 0) throw new Error('API_URL belum diisi di js/config.js');
+    if (!silent) loading(true);
+    try {
+      const res = await fetch(CFG.API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(Object.assign({ action: action, token: S.token }, data || {}))
+      });
+      const j = await res.json();
+      if (!j.ok) {
+        if (j.code === 'AUTH') { doLogout(true); }
+        throw new Error(j.error || 'Terjadi kesalahan');
+      }
+      return j.data;
+    } finally {
+      if (!silent) loading(false);
+    }
+  }
+
+  async function compress(file, maxDim, quality) {
+    maxDim = maxDim || 1280; quality = quality || 0.72;
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = url; });
+      const r = Math.min(1, maxDim / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * r); c.height = Math.round(img.height * r);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      return c.toDataURL('image/jpeg', quality);
+    } finally { URL.revokeObjectURL(url); }
+  }
+
+  /* ---------- modal & lightbox ---------- */
+  function modal(html, onMount) {
+    const bg = document.createElement('div');
+    bg.className = 'modal-bg';
+    bg.innerHTML = '<div class="modal">' + html + '</div>';
+    document.body.appendChild(bg);
+    const close = () => bg.remove();
+    bg.addEventListener('click', (e) => { if (e.target === bg || e.target.closest('[data-close]')) close(); });
+    if (onMount) onMount($('.modal', bg), close);
+    return close;
+  }
+  function lightbox(url) {
+    const lb = document.createElement('div');
+    lb.className = 'lightbox';
+    lb.innerHTML = '<img src="' + esc(url) + '" alt="foto">';
+    lb.addEventListener('click', () => lb.remove());
+    document.body.appendChild(lb);
+  }
+  document.addEventListener('click', (e) => {
+    const im = e.target.closest('img[data-zoom]');
+    if (im) { e.stopPropagation(); lightbox(im.getAttribute('data-zoom')); }
+  }, true);
+
+  /* ---------- LOGIN ---------- */
+  function renderLogin() {
+    $('#app').innerHTML = `
+      <div class="login-wrap"><form class="login-card" id="lf" autocomplete="on">
+        <div class="logo">${ICON.fire}</div>
+        <h1>Checklist Kendaraan PKP-PK</h1>
+        <p class="muted" style="margin:6px 0 4px">${esc(CFG.NAMA_UNIT)} · silakan masuk</p>
+        <label class="f">Username</label>
+        <input class="in" name="username" autocomplete="username" autocapitalize="none" required>
+        <label class="f">Password</label>
+        <input class="in" name="password" type="password" autocomplete="current-password" required>
+        <div id="le" class="err hidden"></div>
+        <button class="btn block" style="margin-top:18px" type="submit">Masuk</button>
+      </form></div>`;
+    $('#lf').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = e.target;
+      $('#le').classList.add('hidden');
+      try {
+        const d = await api('login', { username: f.username.value, password: f.password.value });
+        S.token = d.token; S.user = d.user; saveSession();
+        renderShell();
+      } catch (err) {
+        $('#le').textContent = err.message;
+        $('#le').classList.remove('hidden');
+      }
+    });
+  }
+
+  function doLogout(expired) {
+    S.token = null; S.user = null; saveSession();
+    renderLogin();
+    if (expired) toast('Sesi berakhir, silakan login ulang', true);
+  }
+
+  /* ---------- SHELL ---------- */
+  function renderShell() {
+    const admin = S.user.role === 'admin';
+    $('#app').innerHTML = `
+      <header class="topbar"><div class="topbar-in">
+        <div class="logo">${ICON.fire}</div>
+        <div class="brand"><b>Checklist PKP-PK</b><span>${esc(CFG.NAMA_UNIT)}</span></div>
+        <button class="chip" id="me"><div class="avatar">${esc(initials(S.user.nama))}</div><span class="nm">${esc(S.user.nama)}</span></button>
+      </div></header>
+      <nav class="nav" id="nav">
+        <button data-v="beranda">${ICON.home}<span>Beranda</span></button>
+        <button data-v="isi">${ICON.plus}<span>Isi</span></button>
+        <button data-v="temuan">${ICON.alert}<span>Temuan</span><b class="badge hidden" id="nb">0</b></button>
+        <button data-v="riwayat">${ICON.hist}<span>Riwayat</span></button>
+        ${admin ? `<button data-v="kalender">${ICON.cal}<span>Kalender</span></button><button data-v="users">${ICON.users}<span>Pengguna</span></button>` : ''}
+      </nav>
+      <main id="main"></main>`;
+    $('#nav').addEventListener('click', (e) => { const b = e.target.closest('button[data-v]'); if (b) go(b.dataset.v); });
+    $('#me').addEventListener('click', profileModal);
+    go(S.view || 'beranda');
+  }
+
+  function setBadge(n) {
+    S.openCount = n;
+    const b = $('#nb');
+    if (!b) return;
+    b.textContent = n;
+    b.classList.toggle('hidden', !n);
+  }
+
+  async function go(v, arg) {
+    S.view = v;
+    $$('#nav button').forEach((b) => b.classList.toggle('on', b.dataset.v === v));
+    const m = $('#main');
+    m.innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
+    window.scrollTo(0, 0);
+    try {
+      if (v === 'beranda') await viewBeranda();
+      else if (v === 'isi') await viewIsi(arg);
+      else if (v === 'temuan') await viewTemuan();
+      else if (v === 'riwayat') await viewRiwayat();
+      else if (v === 'kalender') await viewKalender();
+      else if (v === 'users') await viewUsers();
+    } catch (err) {
+      m.innerHTML = '<div class="card empty">' + esc(err.message) + '<br><br><button class="btn sm" id="retry">Coba lagi</button></div>';
+      const r = $('#retry'); if (r) r.onclick = () => go(v, arg);
+    }
+  }
+
+  /* ---------- BERANDA ---------- */
+  async function viewBeranda() {
+    const d = await api('dashboard', {}, { silent: true });
+    setBadge(d.openTemuan.length);
+    S.libur = d.libur || [];
+    const hari = dayType(d.tanggal);
+    const byK = {};
+    d.today.forEach((r) => { (byK[r.kodeKendaraan] = byK[r.kodeKendaraan] || []).push(r); });
+    const doneN = VEHICLES.filter((v) => byK[v.kode]).length;
+    const max = Math.max(1, ...d.last7.map((x) => x.jumlah));
+    $('#main').innerHTML = `
+      <div class="page-title"><div><div class="muted small">${esc(fmtHariPanjang(d.tanggal))}</div><h2>Halo, ${esc(S.user.nama.split(' ')[0])} 👋</h2></div></div>
+      ${hari.libur ? `<div class="card libur-banner"><b>Hari ini libur · ${esc(hari.alasan)}</b><span>Pengecekan tidak diwajibkan, tetapi tetap bisa diisi bila ada.</span></div>`
+          : hari.khusus ? `<div class="card libur-banner khusus"><b>Hari kerja khusus · ${esc(hari.alasan)}</b><span>Pengecekan tetap dilakukan hari ini.</span></div>` : ''}
+      <div class="grid g3">
+        <div class="card stat"><div class="num">${hari.libur && !doneN ? 'Libur' : doneN + '/' + VEHICLES.length}</div><div class="lbl">Kendaraan dicek hari ini</div></div>
+        <div class="card stat ${d.openTemuan.length ? 'alert' : ''}"><div class="num">${d.openTemuan.length}</div><div class="lbl">Temuan belum diperbaiki</div></div>
+        <div class="card stat wide"><div class="num">${d.today.length}</div><div class="lbl">Pengisian hari ini</div></div>
+      </div>
+      <div class="section-t">Status kendaraan hari ini</div>
+      <div class="grid vgrid">
+        ${VEHICLES.map((v) => {
+          const r = byK[v.kode];
+          const last = r ? r[r.length - 1] : null;
+          const tem = r ? r.reduce((a, x) => a + Number(x.jumlahTemuan || 0), 0) : 0;
+          return `<div class="card veh ${r ? 'done' : ''}">
+            <div class="vk">${v.kode}</div>
+            <div class="vi"><b>${esc(v.nama)}</b>
+              <span>${last ? 'Oleh ' + esc(last.namaPelaksana) + ' · ' + esc(last.jam) : (hari.libur ? 'Libur · ' + esc(hari.alasan) : 'Belum dicek')}</span></div>
+            ${r ? `<span class="pill ${tem ? 'warn' : 'ok'}">${tem ? tem + ' temuan' : 'Aman'}</span>`
+                : `<div style="display:flex;gap:6px;align-items:center">${hari.libur ? '<span class="pill gray">Libur</span>' : ''}<button class="btn ${hari.libur ? 'ghost ' : ''}sm" data-isi="${v.kode}">Isi</button></div>`}
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="section-t">Yang mengisi hari ini</div>
+      <div class="card">
+        ${d.today.length ? `<div class="scroll-x"><table class="tbl"><thead><tr><th>Jam</th><th>Kendaraan</th><th>Pelaksana</th><th>Penanggung jawab</th><th></th></tr></thead><tbody>
+          ${d.today.map((r) => `<tr><td>${esc(r.jam)}</td><td><b>${esc(r.kodeKendaraan)}</b> <span class="muted small">${esc(r.namaKendaraan)}</span></td><td>${esc(r.namaPelaksana)}</td><td>${esc(r.penanggungJawab)}</td>
+            <td>${Number(r.jumlahTemuan) ? '<span class="pill warn">' + esc(r.jumlahTemuan) + ' temuan</span>' : '<span class="pill ok">Aman</span>'}</td></tr>`).join('')}
+        </tbody></table></div>` : '<div class="empty" style="padding:18px">Belum ada yang mengisi hari ini.</div>'}
+      </div>
+      <div class="section-t">Pengisian 7 hari terakhir</div>
+      <div class="card"><div class="chart">
+        ${d.last7.map((x) => `<div class="c"><b>${x.jumlah}</b><i style="height:${Math.max(4, Math.round(x.jumlah / max * 62))}px"></i><span>${esc(hariPendek(x.tanggal))}</span></div>`).join('')}
+      </div></div>
+      ${d.openTemuan.length ? `<div class="section-t">Temuan terbaru <button class="link" id="allt">Lihat semua</button></div>
+        <div class="list">${d.openTemuan.slice(0, 3).map(temCard).join('')}</div>` : ''}`;
+    $$('[data-isi]').forEach((b) => { b.onclick = () => go('isi', b.dataset.isi); });
+    const at = $('#allt'); if (at) at.onclick = () => go('temuan');
+    bindTemActions();
+  }
+
+  /* ---------- ISI CHECKLIST ---------- */
+  async function viewIsi(pre) {
+    if (!S.users.length) {
+      try { S.users = await api('users', {}, { silent: true }); } catch (e) { S.users = []; }
+    }
+    if (pre && CHECKLISTS[pre]) return renderForm(pre);
+    $('#main').innerHTML = `
+      <div class="page-title"><h2>Pilih kendaraan</h2></div>
+      <div class="grid vgrid">${VEHICLES.map((v) => `
+        <div class="card veh pick" data-k="${v.kode}"><div class="vk">${v.kode}</div>
+        <div class="vi"><b>${esc(v.nama)}</b><span>${esc(v.jenis)}</span></div></div>`).join('')}</div>`;
+    $$('.pick').forEach((c) => { c.onclick = () => renderForm(c.dataset.k); });
+  }
+
+  const GOOD = { cond: 'Baik', fill: 'Penuh' };
+  const BAD = { cond: 'Rusak', fill: 'Kurang' };
+
+  function renderForm(kode) {
+    const v = vehicleOf(kode);
+    const items = [];
+    CHECKLISTS[kode].forEach((sec) => sec.items.forEach((it) => {
+      items.push({ s: sec.title, n: it.n, q: it.q || '', k: it.k, u: it.u || '', hasil: '', nilai: '', ket: '', foto: '' });
+    }));
+    S.form = { kode: kode, items: items };
+    let idx = 0;
+    const secHtml = CHECKLISTS[kode].map((sec) => {
+      const start = idx;
+      const rows = sec.items.map((it) => {
+        const i = idx++;
+        const right = it.k === 'val'
+          ? `<div class="valbox"><input class="in val" inputmode="decimal" placeholder="isi"><span>${esc(it.u)}</span></div>`
+          : `<div class="seg"><button type="button" class="g" data-v="${GOOD[it.k]}">${GOOD[it.k]}</button><button type="button" class="r" data-v="${BAD[it.k]}">${BAD[it.k]}</button></div>`;
+        return `<div class="item" data-i="${i}">
+          <div class="item-top"><div class="item-name">${esc(it.n)}${it.q ? '<small>' + esc(it.q) + '</small>' : ''}</div>${right}</div>
+          <div class="item-extra hidden">
+            <input class="in ket" placeholder="Jelaskan kerusakan / kekurangan…">
+            <div class="photo-row"><label class="photo-btn">${ICON.cam} Foto temuan<input type="file" accept="image/*" capture="environment"></label><div class="pv hidden"></div></div>
+          </div></div>`;
+      }).join('');
+      const allBtn = sec.items.some((x) => x.k !== 'val') ? `<button type="button" class="link sec-all" data-s="${start}-${idx - 1}">Semua baik</button>` : '';
+      return `<div class="sec"><div class="sec-h"><b>${esc(sec.title)}</b>${allBtn}</div>${rows}</div>`;
+    }).join('');
+
+    const opts = S.users.map((u) => `<option value="${esc(u.nama)}">${esc(u.nama)}${u.jabatan ? ' — ' + esc(u.jabatan) : ''}</option>`).join('');
+    $('#main').innerHTML = `
+      <div class="page-title"><div><button class="link" id="back">← Ganti kendaraan</button><h2>${esc(v.kode)} · ${esc(v.nama)}</h2></div></div>
+      <div class="card">
+        <div class="row2">
+          <div><label class="f" style="margin-top:0">Pelaksana</label><input class="in" value="${esc(S.user.nama)}" disabled></div>
+          <div><label class="f" style="margin-top:0">Penanggung jawab</label><select class="in" id="pj"><option value="">Pilih…</option>${opts}</select></div>
+        </div>
+      </div>
+      <div class="progress"><div style="display:flex;justify-content:space-between;font-size:13px;font-weight:700"><span id="pt">0 / ${items.length} terisi</span><span id="pb" class="muted">0 temuan</span></div><div class="bar"><i id="pbar"></i></div></div>
+      <div id="secs">${secHtml}</div>
+      <div class="card" style="margin-top:16px">
+        <label class="f" style="margin-top:0">Lama pemanasan kendaraan & peralatan (menit)</label>
+        <input class="in" id="pem" inputmode="numeric" placeholder="mis. 15">
+        <label class="f">Catatan</label>
+        <textarea class="in" id="cat" placeholder="Opsional"></textarea>
+      </div>
+      <div class="submit-bar"><button class="btn block" id="send">Kirim checklist</button></div>`;
+
+    const secs = $('#secs');
+    function refresh() {
+      const done = items.filter((x) => (x.k === 'val' ? x.nilai.trim() !== '' : x.hasil !== '')).length;
+      const bad = items.filter((x) => x.hasil === 'Rusak' || x.hasil === 'Kurang').length;
+      $('#pt').textContent = done + ' / ' + items.length + ' terisi';
+      $('#pb').textContent = bad + ' temuan';
+      $('#pb').style.color = bad ? 'var(--bad)' : '';
+      $('#pbar').style.width = Math.round(done / items.length * 100) + '%';
+    }
+    function paint(i) {
+      const it = items[i];
+      const el = $('.item[data-i="' + i + '"]', secs);
+      const bad = it.hasil === 'Rusak' || it.hasil === 'Kurang';
+      el.classList.toggle('bad', bad);
+      el.classList.toggle('done', it.k === 'val' ? it.nilai.trim() !== '' : it.hasil !== '');
+      $$('.seg button', el).forEach((b) => b.classList.toggle('on', b.dataset.v === it.hasil));
+      $('.item-extra', el).classList.toggle('hidden', !bad);
+    }
+    secs.addEventListener('click', (e) => {
+      const sb = e.target.closest('.seg button');
+      if (sb) {
+        const i = +sb.closest('.item').dataset.i;
+        items[i].hasil = sb.dataset.v;
+        paint(i); refresh();
+        return;
+      }
+      const all = e.target.closest('.sec-all');
+      if (all) {
+        const r = all.dataset.s.split('-').map(Number);
+        for (let i = r[0]; i <= r[1]; i++) if (items[i].k !== 'val') { items[i].hasil = GOOD[items[i].k]; paint(i); }
+        refresh();
+        return;
+      }
+      const x = e.target.closest('.pv button');
+      if (x) {
+        const el = x.closest('.item'); const i = +el.dataset.i;
+        items[i].foto = ''; const pv = $('.pv', el); pv.classList.add('hidden'); pv.innerHTML = '';
+      }
+    });
+    secs.addEventListener('input', (e) => {
+      const el = e.target.closest('.item'); if (!el) return;
+      const i = +el.dataset.i;
+      if (e.target.classList.contains('val')) { items[i].nilai = e.target.value; paint(i); refresh(); }
+      else if (e.target.classList.contains('ket')) items[i].ket = e.target.value;
+    });
+    secs.addEventListener('change', async (e) => {
+      if (e.target.type !== 'file' || !e.target.files[0]) return;
+      const el = e.target.closest('.item'); const i = +el.dataset.i;
+      try {
+        loading(true, 'Memproses foto…');
+        items[i].foto = await compress(e.target.files[0]);
+        const pv = $('.pv', el);
+        pv.innerHTML = '<img src="' + items[i].foto + '" data-zoom="' + items[i].foto + '" alt="foto"><button type="button">×</button>';
+        pv.classList.remove('hidden');
+      } catch (err) { toast('Foto gagal diproses', true); }
+      finally { loading(false); e.target.value = ''; }
+    });
+    $('#back').onclick = () => go('isi');
+    $('#send').onclick = async () => {
+      const pj = $('#pj').value;
+      if (!pj) { toast('Pilih penanggung jawab dulu', true); $('#pj').focus(); return; }
+      const first = items.findIndex((x) => (x.k === 'val' ? x.nilai.trim() === '' : x.hasil === ''));
+      if (first >= 0) {
+        const el = $('.item[data-i="' + first + '"]', secs);
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.style.outline = '2px solid var(--brand)'; setTimeout(() => { el.style.outline = ''; }, 1800);
+        toast('Masih ada item yang belum diisi', true); return;
+      }
+      const noKet = items.findIndex((x) => (x.hasil === 'Rusak' || x.hasil === 'Kurang') && !x.ket.trim());
+      if (noKet >= 0) {
+        const el = $('.item[data-i="' + noKet + '"]', secs);
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        $('.ket', el).focus();
+        toast('Isi keterangan untuk item yang rusak/kurang', true); return;
+      }
+      const btn = $('#send'); btn.disabled = true;
+      try {
+        loading(true, 'Mengirim data & foto…');
+        const res = await api('submit', {
+          kode: kode, nama: v.nama, penanggungJawab: pj, pemanasan: $('#pem').value.trim(), catatan: $('#cat').value.trim(),
+          items: items.map((x) => ({ s: x.s, n: x.n, q: x.q, k: x.k, hasil: x.hasil, nilai: x.nilai, ket: x.ket, foto: x.foto }))
+        }, { silent: true });
+        toast(res.jumlahTemuan ? 'Terkirim. ' + res.jumlahTemuan + ' temuan dicatat.' : 'Checklist terkirim. Semua aman ✅');
+        S.form = null;
+        go('beranda');
+      } catch (err) { toast(err.message, true); }
+      finally { loading(false); btn.disabled = false; }
+    };
+    window.scrollTo(0, 0);
+  }
+
+  /* ---------- TEMUAN ---------- */
+  function temCard(t) {
+    const open = t.status === 'Open';
+    return `<div class="card tem" data-id="${esc(t.id)}">
+      <div class="tem-img">${t.fotoUrl ? `<img loading="lazy" src="${esc(t.fotoUrl)}" data-zoom="${esc(t.fotoUrl)}" alt="foto temuan">` : 'Tanpa foto'}</div>
+      <div class="tem-body">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><b>${esc(t.item)}</b><span class="pill ${open ? 'bad' : 'ok'}">${open ? 'Belum' : 'Selesai'}</span></div>
+        <div class="muted small">${esc(t.kodeKendaraan)} · ${esc(t.namaKendaraan)}<br>${esc(fmtTgl(t.tanggal))} ${esc(t.jam)} · ${esc(t.dilaporkanOleh)}</div>
+        ${t.keterangan ? `<p>${esc(t.keterangan)}</p>` : ''}
+        ${open ? `<button class="btn ok sm" data-fix="${esc(t.id)}">Tandai selesai</button>`
+          : `<div class="fixbox">${t.fotoPerbaikanUrl ? `<img src="${esc(t.fotoPerbaikanUrl)}" data-zoom="${esc(t.fotoPerbaikanUrl)}" alt="foto perbaikan">` : ''}<div><b>Diperbaiki</b> ${esc(fmtTgl(t.tglSelesai))} ${esc(t.jamSelesai)}<br>oleh ${esc(t.diperbaikiOleh)}${t.catatanPerbaikan ? '<br>' + esc(t.catatanPerbaikan) : ''}</div></div>`}
+      </div></div>`;
+  }
+
+  function bindTemActions() {
+    $$('[data-fix]').forEach((b) => { b.onclick = () => fixModal(b.dataset.fix); });
+  }
+
+  async function viewTemuan() {
+    const list = await api('listTemuan', { status: S.temFilter }, { silent: true });
+    if (S.temFilter === 'Open') setBadge(list.length);
+    const F = [['Open', 'Belum diperbaiki'], ['Fixed', 'Sudah selesai'], ['All', 'Semua']];
+    $('#main').innerHTML = `
+      <div class="page-title"><h2>Temuan kerusakan</h2></div>
+      <div class="chips">${F.map((f) => `<button data-f="${f[0]}" class="${S.temFilter === f[0] ? 'on' : ''}">${f[1]}</button>`).join('')}</div>
+      <div class="list">${list.length ? list.map(temCard).join('') : '<div class="card empty">Tidak ada data.</div>'}</div>`;
+    $$('.chips button').forEach((b) => { b.onclick = () => { S.temFilter = b.dataset.f; go('temuan'); }; });
+    bindTemActions();
+  }
+
+  function fixModal(id) {
+    let foto = '';
+    modal(`<div class="modal-h"><h3>Tandai sudah diperbaiki</h3><button class="x" data-close>×</button></div>
+      <label class="f">Catatan perbaikan</label>
+      <textarea class="in" id="fc" placeholder="Apa yang diperbaiki / diganti?"></textarea>
+      <label class="f">Foto setelah diperbaiki (opsional)</label>
+      <div class="photo-row"><label class="photo-btn">${ICON.cam} Ambil foto<input type="file" accept="image/*" capture="environment" id="ff"></label><div class="pv hidden" id="fp"></div></div>
+      <button class="btn ok block" style="margin-top:18px" id="fs">Simpan</button>`, (m, close) => {
+      $('#ff', m).onchange = async (e) => {
+        if (!e.target.files[0]) return;
+        try {
+          loading(true, 'Memproses foto…');
+          foto = await compress(e.target.files[0]);
+          const pv = $('#fp', m); pv.innerHTML = '<img src="' + foto + '" alt="foto">'; pv.classList.remove('hidden');
+        } catch (err) { toast('Foto gagal diproses', true); } finally { loading(false); }
+      };
+      $('#fs', m).onclick = async () => {
+        try {
+          loading(true, 'Menyimpan…');
+          await api('fixTemuan', { id: id, catatan: $('#fc', m).value.trim(), foto: foto }, { silent: true });
+          close(); toast('Temuan ditandai selesai ✅'); go(S.view);
+        } catch (err) { toast(err.message, true); } finally { loading(false); }
+      };
+    });
+  }
+
+  /* ---------- RIWAYAT ---------- */
+  function buildRiwayat(list, f) {
+    const byDate = {};
+    list.forEach((r) => { (byDate[r.tanggal] = byDate[r.tanggal] || []).push(r); });
+    const hariIni = ymd(new Date());
+    const e0 = (f.sampai || hariIni).split('-'), s0 = (f.dari || hariIni).split('-');
+    const cur = new Date(+e0[0], +e0[1] - 1, +e0[2]);
+    const start = new Date(+s0[0], +s0[1] - 1, +s0[2]);
+    let out = '';
+    let guard = 0;
+    while (cur >= start && guard++ < 120) {
+      const d = ymd(cur);
+      if (byDate[d]) {
+        out += byDate[d].map((r) => `
+          <div class="card hrow" data-id="${esc(r.id)}"><div class="vk">${esc(r.kodeKendaraan)}</div>
+            <div class="hi"><b>${esc(r.namaKendaraan)}</b><span class="muted small">${esc(fmtTgl(r.tanggal))} ${esc(r.jam)} · ${esc(r.namaPelaksana)}</span><br><span class="muted small">PJ: ${esc(r.penanggungJawab)}</span></div>
+            <span class="pill ${Number(r.jumlahTemuan) ? 'warn' : 'ok'}">${Number(r.jumlahTemuan) ? r.jumlahTemuan + ' temuan' : 'Aman'}</span></div>`).join('');
+      } else if (!f.kode && d < hariIni) {
+        const t = dayType(d);
+        out += t.libur
+          ? `<div class="card hrow mk"><div class="vk">L</div><div class="hi"><b>${esc(fmtTgl(d))} · Libur</b><span class="muted small">${esc(t.alasan)}</span></div><span class="pill gray">Libur</span></div>`
+          : `<div class="card hrow mk"><div class="vk">!</div><div class="hi"><b>${esc(fmtTgl(d))}</b><span class="muted small">Tidak ada pengecekan tercatat</span></div><span class="pill bad">Kosong</span></div>`;
+      }
+      cur.setDate(cur.getDate() - 1);
+    }
+    return out ? '<div class="list">' + out + '</div>' : '<div class="card empty">Tidak ada data pada rentang ini.</div>';
+  }
+
+  async function viewRiwayat() {
+    if (!S.libur.length) { try { S.libur = await api('listLibur', {}, { silent: true }); } catch (e) { /* abaikan */ } }
+    const today = new Date();
+    const f = S.rf || (S.rf = { kode: '', dari: ymd(new Date(today.getTime() - 29 * 86400000)), sampai: ymd(today) });
+    $('#main').innerHTML = `
+      <div class="page-title"><h2>Riwayat pengecekan</h2></div>
+      <div class="filters">
+        <select class="in" id="rk"><option value="">Semua kendaraan</option>${VEHICLES.map((v) => `<option value="${v.kode}" ${f.kode === v.kode ? 'selected' : ''}>${v.kode} · ${esc(v.nama)}</option>`).join('')}</select>
+        <input class="in" type="date" id="rd" value="${f.dari}"><input class="in" type="date" id="rs" value="${f.sampai}">
+      </div><div id="rl"><div class="skel"></div></div>`;
+    const load = async () => {
+      f.kode = $('#rk').value; f.dari = $('#rd').value; f.sampai = $('#rs').value;
+      const rl = $('#rl'); rl.innerHTML = '<div class="skel"></div><div class="skel"></div>';
+      try {
+        const list = await api('listPemeriksaan', { kode: f.kode, dari: f.dari, sampai: f.sampai, limit: 150 }, { silent: true });
+        rl.innerHTML = buildRiwayat(list, f);
+        $$('.hrow[data-id]', rl).forEach((c) => { c.onclick = () => detailModal(c.dataset.id); });
+      } catch (err) { rl.innerHTML = '<div class="card empty">' + esc(err.message) + '</div>'; }
+    };
+    ['rk', 'rd', 'rs'].forEach((id) => { $('#' + id).onchange = load; });
+    load();
+  }
+
+  /* ---------- UNDUH PDF ---------- */
+  let pdfLib = null;
+  function muatJsPdf() {
+    if (window.jspdf) return Promise.resolve();
+    if (!pdfLib) {
+      pdfLib = new Promise((ok, no) => {
+        const sc = document.createElement('script');
+        sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+        sc.onload = ok;
+        sc.onerror = () => { pdfLib = null; no(new Error('Library PDF gagal dimuat, periksa koneksi internet')); };
+        document.head.appendChild(sc);
+      });
+    }
+    return pdfLib;
+  }
+
+  async function unduhPdf(d) {
+    try {
+      loading(true, 'Membuat PDF…');
+      await muatJsPdf();
+      const v = vehicleOf(d.kodeKendaraan) || { kode: d.kodeKendaraan, nama: d.namaKendaraan, jenis: '' };
+      // Satuan isian (psi, °C, V) tidak disimpan di data; ambil dari daftar checklist.
+      const unit = {};
+      (CHECKLISTS[d.kodeKendaraan] || []).forEach((sec) => sec.items.forEach((it) => { if (it.u) unit[sec.title + '|' + it.n] = it.u; }));
+      const items = (d.items || []).map((x) => Object.assign({}, x, { u: x.u || unit[x.s + '|' + x.n] || '' }));
+      const doc = window.PKPPKPdf.buat(Object.assign({}, d, { items: items }), v, CFG.NAMA_UNIT);
+      doc.save(window.PKPPKPdf.namaFile(d));
+      toast('PDF diunduh');
+    } catch (err) {
+      toast('Gagal membuat PDF: ' + err.message, true);
+    } finally {
+      loading(false);
+    }
+  }
+
+  async function detailModal(id) {
+    let d;
+    try { d = await api('getPemeriksaan', { id: id }); } catch (e) { toast(e.message, true); return; }
+    const groups = {};
+    d.items.forEach((x) => { (groups[x.s] = groups[x.s] || []).push(x); });
+    modal(`<div class="modal-h"><h3>${esc(d.kodeKendaraan)} · ${esc(d.namaKendaraan)}</h3><button class="x" data-close>×</button></div>
+      <div class="muted small">${esc(fmtTgl(d.tanggal))} ${esc(d.jam)}<br>Pelaksana: <b>${esc(d.namaPelaksana)}</b> · Penanggung jawab: <b>${esc(d.penanggungJawab)}</b>${d.pemanasanMenit ? '<br>Pemanasan: ' + esc(d.pemanasanMenit) + ' menit' : ''}${d.catatan ? '<br>Catatan: ' + esc(d.catatan) : ''}</div>
+      <button class="btn sm" id="dpdf" style="margin-top:12px">Unduh PDF</button>
+      ${Object.keys(groups).map((g) => `<div class="dgroup">${esc(g)}</div>${groups[g].map((x) => {
+        const bad = x.hasil === 'Rusak' || x.hasil === 'Kurang';
+        return `<div class="drow ${bad ? 'bad' : ''}"><div>${esc(x.n)}${x.q ? ' <span class="muted small">(' + esc(x.q) + ')</span>' : ''}${bad && x.ket ? '<br><span class="small">' + esc(x.ket) + '</span>' : ''}</div>
+          <div style="display:flex;gap:8px;align-items:center">${x.fotoUrl ? `<img src="${esc(x.fotoUrl)}" data-zoom="${esc(x.fotoUrl)}" alt="foto">` : ''}<span>${esc(x.k === 'val' ? x.nilai : x.hasil)}</span></div></div>`;
+      }).join('')}`).join('')}`, (m) => {
+      $('#dpdf', m).onclick = () => unduhPdf(d);
+    });
+  }
+
+  /* ---------- KALENDER LIBUR (admin) ---------- */
+  async function viewKalender() {
+    S.libur = await api('listLibur', {}, { silent: true });
+    if (!S.calMonth) { const n = new Date(); S.calMonth = { y: n.getFullYear(), m: n.getMonth() }; }
+    renderKal();
+  }
+
+  function renderKal() {
+    const y = S.calMonth.y, m = S.calMonth.m;
+    const startW = (new Date(y, m, 1).getDay() + 6) % 7;
+    const dim = new Date(y, m + 1, 0).getDate();
+    const hariIni = ymd(new Date());
+    const z = (n) => String(n).padStart(2, '0');
+    let cells = '';
+    for (let i = 0; i < startW; i++) cells += '<div class="cal-c off"></div>';
+    for (let d = 1; d <= dim; d++) {
+      const str = y + '-' + z(m + 1) + '-' + z(d);
+      const t = dayType(str);
+      const cls = 'cal-c' + (t.libur ? (t.sumber === 'kalender' ? ' libur' : ' wk') : '') + (t.khusus ? ' khusus' : '') + (str === hariIni ? ' today' : '');
+      cells += `<button class="${cls}" data-d="${str}"><span>${d}</span>${t.sumber === 'kalender' ? '<i></i>' : ''}</button>`;
+    }
+    const prefix = y + '-' + z(m + 1);
+    const ents = S.libur.filter((x) => x.tanggal.indexOf(prefix) === 0).sort((a, b) => a.tanggal.localeCompare(b.tanggal));
+    $('#main').innerHTML = `
+      <div class="page-title"><h2>Kalender libur</h2></div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <button class="btn ghost sm" id="kp">‹</button>
+          <b style="text-transform:capitalize">${esc(new Date(y, m, 1).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }))}</b>
+          <button class="btn ghost sm" id="kn">›</button>
+        </div>
+        <div class="cal"><div class="cal-h">${['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'].map((n) => '<span>' + n + '</span>').join('')}</div><div class="cal-g">${cells}</div></div>
+        <div class="legend small muted"><span><i class="lg libur"></i>Libur</span><span><i class="lg wk"></i>Sabtu/Minggu (otomatis libur)</span><span><i class="lg khusus"></i>Hari kerja khusus</span></div>
+        <p class="muted small" style="margin:10px 0 0">Ketuk tanggal untuk mengubah. Sabtu-Minggu otomatis libur; ketuk lalu pilih "Hari kerja" bila tetap ada pengecekan.</p>
+      </div>
+      <div class="section-t">Pengaturan bulan ini</div>
+      <div class="list">${ents.length ? ents.map((e) => `
+        <div class="card hrow" data-d="${esc(e.tanggal)}"><div class="vk">${esc(e.tanggal.slice(8))}</div>
+          <div class="hi"><b>${esc(e.keterangan || (e.jenis === 'Kerja' ? 'Hari kerja khusus' : 'Libur'))}</b><span class="muted small">${esc(fmtTgl(e.tanggal))}</span></div>
+          <span class="pill ${e.jenis === 'Kerja' ? 'ok' : 'bad'}">${e.jenis === 'Kerja' ? 'Hari kerja' : 'Libur'}</span></div>`).join('') : '<div class="card empty">Belum ada pengaturan khusus di bulan ini.</div>'}</div>`;
+    $('#kp').onclick = () => { S.calMonth = m === 0 ? { y: y - 1, m: 11 } : { y: y, m: m - 1 }; renderKal(); };
+    $('#kn').onclick = () => { S.calMonth = m === 11 ? { y: y + 1, m: 0 } : { y: y, m: m + 1 }; renderKal(); };
+    $$('[data-d]').forEach((b) => { b.onclick = () => dayModal(b.dataset.d); });
+  }
+
+  function dayModal(str) {
+    const t = dayType(str);
+    const cur = S.libur.find((x) => x.tanggal === str);
+    const val = cur ? cur.jenis : 'auto';
+    modal(`<div class="modal-h"><h3>${esc(fmtHariPanjang(str))}</h3><button class="x" data-close>×</button></div>
+      <div class="muted small">Saat ini: <b>${t.libur ? 'Libur' : (t.khusus ? 'Hari kerja khusus' : 'Hari kerja')}</b>${t.alasan ? ' · ' + esc(t.alasan) : ''}</div>
+      <label class="f">Status</label>
+      <select class="in" id="ds">
+        <option value="auto" ${val === 'auto' ? 'selected' : ''}>Ikuti aturan biasa (Sabtu-Minggu libur)</option>
+        <option value="Libur" ${val === 'Libur' ? 'selected' : ''}>Libur</option>
+        <option value="Kerja" ${val === 'Kerja' ? 'selected' : ''}>Hari kerja (pengecekan wajib)</option>
+      </select>
+      <label class="f">Keterangan</label><input class="in" id="dk" value="${esc(cur ? cur.keterangan : '')}" placeholder="mis. Cuti bersama, libur daerah">
+      <label class="f">Terapkan sampai tanggal (opsional, maks. 14 hari)</label><input class="in" type="date" id="dsd" min="${str}">
+      <button class="btn block" style="margin-top:18px" id="dsave">Simpan</button>`, (m, close) => {
+      $('#dsave', m).onclick = async () => {
+        const st = $('#ds', m).value, ket = $('#dk', m).value.trim(), sd = $('#dsd', m).value;
+        const days = [str];
+        if (sd && sd > str) {
+          const a = str.split('-'), c = new Date(+a[0], +a[1] - 1, +a[2]);
+          while (days.length < 14) { c.setDate(c.getDate() + 1); const d = ymd(c); if (d > sd) break; days.push(d); }
+        }
+        try {
+          loading(true, 'Menyimpan…');
+          for (const d of days) {
+            S.libur = st === 'auto'
+              ? await api('deleteLibur', { tanggal: d }, { silent: true })
+              : await api('setLibur', { tanggal: d, jenis: st, keterangan: ket }, { silent: true });
+          }
+          close(); toast('Kalender diperbarui'); renderKal();
+        } catch (e) { toast(e.message, true); } finally { loading(false); }
+      };
+    });
+  }
+
+  /* ---------- PENGGUNA (admin) ---------- */
+  async function viewUsers() {
+    const list = await api('listUsers', {}, { silent: true });
+    $('#main').innerHTML = `
+      <div class="page-title"><h2>Kelola pengguna</h2><button class="btn sm" id="au">+ Tambah</button></div>
+      <div class="list">${list.map((u) => `
+        <div class="card hrow" style="cursor:default"><div class="vk">${esc(initials(u.nama))}</div>
+          <div class="hi"><b>${esc(u.nama)}</b><span class="muted small">@${esc(u.username)} · ${esc(u.jabatan || '-')} · ${u.role === 'admin' ? 'Admin' : 'Petugas'}</span></div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <button class="btn ghost sm" data-rp="${esc(u.username)}">Reset PW</button>
+            ${u.username !== S.user.username ? `<button class="btn ghost sm" data-ac="${esc(u.username)}" data-to="${u.aktif ? 0 : 1}">${u.aktif ? 'Nonaktifkan' : 'Aktifkan'}</button>` : ''}
+          </div></div>`).join('')}</div>`;
+    $('#au').onclick = addUserModal;
+    $$('[data-rp]').forEach((b) => {
+      b.onclick = async () => {
+        const pw = prompt('Password baru untuk ' + b.dataset.rp + ' (min. 6 karakter):');
+        if (!pw) return;
+        try { await api('resetPassword', { username: b.dataset.rp, password: pw }); toast('Password diperbarui'); } catch (e) { toast(e.message, true); }
+      };
+    });
+    $$('[data-ac]').forEach((b) => {
+      b.onclick = async () => {
+        try { await api('setUserActive', { username: b.dataset.ac, aktif: b.dataset.to === '1' }); S.users = []; go('users'); } catch (e) { toast(e.message, true); }
+      };
+    });
+  }
+
+  function addUserModal() {
+    modal(`<div class="modal-h"><h3>Tambah pengguna</h3><button class="x" data-close>×</button></div>
+      <label class="f">Nama lengkap</label><input class="in" id="un">
+      <label class="f">Jabatan</label><input class="in" id="uj" placeholder="mis. Anggota PKP-PK">
+      <div class="row2"><div><label class="f">Username</label><input class="in" id="uu" autocapitalize="none"></div>
+      <div><label class="f">Role</label><select class="in" id="ur"><option value="user">Petugas</option><option value="admin">Admin</option></select></div></div>
+      <label class="f">Password awal (min. 6)</label><input class="in" id="up" type="text">
+      <button class="btn block" style="margin-top:18px" id="us">Simpan</button>`, (m, close) => {
+      $('#us', m).onclick = async () => {
+        try {
+          await api('addUser', { nama: $('#un', m).value, jabatan: $('#uj', m).value, username: $('#uu', m).value, role: $('#ur', m).value, password: $('#up', m).value });
+          S.users = []; close(); toast('Pengguna ditambahkan'); go('users');
+        } catch (e) { toast(e.message, true); }
+      };
+    });
+  }
+
+  /* ---------- PROFIL ---------- */
+  function profileModal() {
+    modal(`<div class="modal-h"><h3>${esc(S.user.nama)}</h3><button class="x" data-close>×</button></div>
+      <div class="muted small">@${esc(S.user.username)} · ${esc(S.user.jabatan || '-')}</div>
+      <div class="dgroup">Ganti password</div>
+      <input class="in" id="po" type="password" placeholder="Password lama" autocomplete="current-password">
+      <input class="in" id="pn" type="password" placeholder="Password baru (min. 6)" style="margin-top:8px" autocomplete="new-password">
+      <button class="btn block" style="margin-top:12px" id="ps">Simpan password</button>
+      <button class="btn ghost block" style="margin-top:10px" id="lo">Keluar</button>`, (m, close) => {
+      $('#ps', m).onclick = async () => {
+        try { await api('changePassword', { oldPassword: $('#po', m).value, newPassword: $('#pn', m).value }); close(); toast('Password diperbarui'); } catch (e) { toast(e.message, true); }
+      };
+      $('#lo', m).onclick = () => { close(); doLogout(); };
+    });
+  }
+
+  /* ---------- START ---------- */
+  if (S.token && S.user) renderShell(); else renderLogin();
+})();
