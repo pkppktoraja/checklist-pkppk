@@ -29,7 +29,7 @@
         V('Tekanan tabung (1)', 'psi'), V('Tekanan tabung (2)', 'psi'), V('Tekanan tabung (P)', 'psi'),
         V('Suhu oli gearbox', '°C'), V('Tegangan baterai', 'V'), V('Konsumsi bahan bakar', 'mis. 3/4')
       ] },
-      { title: 'Jumlah bahan pemadam', items: [F('Foam', '480 Liter'), F('Dry powder', '250 Kg'), F('Air', '4000 Liter')] },
+      { title: 'Jumlah bahan pemadam', items: [F('Foam', '500 Liter'), F('Dry powder', '250 Kg'), F('Air', '4000 Liter')] },
       { title: 'Ruangan cabin pengemudi', items: [
         ...sak(['Lampu depan', 'Lampu weser', 'Lampu tanda hati-hati', 'Lampu rotari', 'Klakson trompet', 'Klakson kecil', 'Sirine', 'Wipper', 'Lampu sorot', 'Radio komunikasi']),
         C('Baju tahan api', '5 Set')
@@ -51,7 +51,7 @@
       { title: 'Ruangan cabin atas', items: [C('Linggis', '1 Unit'), C('Hook', '1 Unit'), C('Tangga', '2 Unit'), C('Selang supply', '2 Unit')] }
     ],
     F2: [
-      { title: 'Jumlah bahan kimia', items: [F('Bahan bakar', '200 Liter'), F('Foam', '240 Liter'), F('Dry powder', '250 Kg'), F('Air', '2000 Liter')] },
+      { title: 'Jumlah bahan kimia', items: [F('Bahan bakar', '200 Liter'), F('Foam', '200 Liter'), F('Dry powder', '250 Kg'), F('Air', '2000 Liter')] },
       { title: 'Ruangan cabin pengemudi', items: [
         ...sak(['Lampu depan', 'Lampu weser', 'Lampu tanda hati-hati', 'Lampu rotari', 'Klakson trompet', 'Sirine', 'Wipper', 'Lampu sorot']),
         C('Radio komunikasi', '1 Unit')
