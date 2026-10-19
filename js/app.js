@@ -80,6 +80,9 @@
     return { libur: false, khusus: false, alasan: '', sumber: '' };
   }
   const initials = (n) => (n || '?').trim().split(/\s+/).slice(0, 2).map((x) => x[0]).join('').toUpperCase();
+  const ROLE = { admin: 'Admin', pj: 'Penanggung jawab', user: 'Petugas' };
+  // Daftar penanggung jawab: user ber-role pj; bila belum ada satu pun, tampilkan semua agar form tetap bisa dipakai.
+  const pjUsers = () => { const p = S.users.filter((u) => u.role === 'pj'); return p.length ? p : S.users; };
 
   /* ---------- API ---------- */
   async function api(action, data, opt) {
@@ -246,7 +249,9 @@
     const doneN = VEHICLES.filter((v) => byK[v.kode]).length;
     const max = Math.max(1, ...d.last7.map((x) => x.jumlah));
     // Status persetujuan checklist milik petugas yang sedang login (hari ini)
-    const mine = d.today.filter((r) => r.pelaksana === S.user.username);
+    const mineToday = d.today.filter((r) => r.pelaksana === S.user.username);
+    const seen = {}; mineToday.forEach((r) => { seen[r.id] = 1; });
+    const mine = mineToday.concat((d.menungguSaya || []).filter((r) => !seen[r.id]));
     const stOf = (r) => r.status || 'Disetujui';
     const stCls = (s) => (s === 'Disetujui' ? 'ok' : s === 'Ditolak' ? 'bad' : 'gray');
     $('#main').innerHTML = `
@@ -261,18 +266,18 @@
         <div class="card stat wide"><div class="num">${aktif.length}</div><div class="lbl">Pengisian hari ini</div></div>
       </div>
       ${S.user.role !== 'admin' ? `
-      <div class="section-t">Persetujuan checklist saya hari ini</div>
+      <div class="section-t">Persetujuan checklist saya</div>
       <div class="card">
         ${mine.length ? mine.map((r) => {
           const s = stOf(r);
           return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line, #eee)">
-            <div><b>${esc(r.kodeKendaraan)}</b> <span class="muted small">${esc(r.namaKendaraan)} · ${esc(r.jam)}</span>
+            <div><b>${esc(r.kodeKendaraan)}</b> <span class="muted small">${esc(r.namaKendaraan)} · ${r.tanggal !== d.tanggal ? esc(fmtTgl(r.tanggal)) + ' ' : ''}${esc(r.jam)}</span>
               ${s === 'Ditolak' && r.alasanTolak ? `<div class="small" style="color:var(--bad)">${esc(r.alasanTolak)}</div>` : ''}
               ${s === 'Disetujui' && r.disetujuiOleh ? `<div class="muted small">Disetujui oleh ${esc(r.disetujuiOleh)}</div>` : ''}
             </div>
             <span class="pill ${stCls(s)}">${esc(s)}</span>
           </div>`;
-        }).join('') : '<div class="empty" style="padding:14px">Kamu belum mengirim checklist hari ini.</div>'}
+        }).join('') : '<div class="empty" style="padding:14px">Tidak ada checklist yang menunggu persetujuan, dan kamu belum mengirim checklist hari ini.</div>'}
       </div>` : ''}
       <div class="section-t">Status kendaraan hari ini</div>
       <div class="grid vgrid">
@@ -351,7 +356,7 @@
       return `<div class="sec"><div class="sec-h"><b>${esc(sec.title)}</b>${allBtn}</div>${rows}</div>`;
     }).join('');
 
-    const opts = S.users.map((u) => `<option value="${esc(u.nama)}">${esc(u.nama)}${u.jabatan ? ' — ' + esc(u.jabatan) : ''}</option>`).join('');
+    const opts = pjUsers().map((u) => `<option value="${esc(u.nama)}">${esc(u.nama)}${u.jabatan ? ' — ' + esc(u.jabatan) : ''}</option>`).join('');
     $('#main').innerHTML = `
       <div class="page-title"><div><button class="link" id="back">← Ganti kendaraan</button><h2>${esc(v.kode)} · ${esc(v.nama)}</h2></div></div>
       <div class="card">
@@ -696,6 +701,7 @@
       ${d.status === 'Menunggu' ? '<div style="margin-top:12px"><span class="pill gray">Menunggu persetujuan admin</span></div>' : ''}
       ${d.status === 'Ditolak' ? `<div class="card libur-banner tolak" style="margin-top:12px"><b>Ditolak oleh ${esc(d.disetujuiOleh || '-')}</b><span>${esc(d.alasanTolak || '')}</span></div>` : ''}
       ${S.user.role === 'admin' && d.status === 'Menunggu' ? '<div style="display:flex;gap:8px;margin-top:12px"><button class="btn ok sm" id="dsetuju">Setujui</button><button class="btn ghost sm" id="dtolak">Tolak</button></div>' : ''}
+      ${S.user.role === 'admin' ? '<div style="display:flex;gap:8px;margin-top:12px"><button class="btn ghost sm" id="dedit">Edit data</button><button class="btn ghost sm" id="ddel" style="color:var(--bad)">Hapus</button></div>' : ''}
       ${Object.keys(groups).map((g) => `<div class="dgroup">${esc(g)}</div>${groups[g].map((x) => {
         const bad = x.hasil === 'Rusak' || x.hasil === 'Kurang';
         return `<div class="drow ${bad ? 'bad' : ''}"><div>${esc(x.n)}${x.q ? ' <span class="muted small">(' + esc(x.q) + ')</span>' : ''}${bad && x.ket ? '<br><span class="small">' + esc(x.ket) + '</span>' : ''}</div>
@@ -704,6 +710,40 @@
       const bp = $('#dpdf', m); if (bp) bp.onclick = () => unduhPdf(d);
       const bs = $('#dsetuju', m); if (bs) bs.onclick = async () => { if (await setujui(d.id)) { close(); go(S.view); } };
       const bt = $('#dtolak', m); if (bt) bt.onclick = () => tolakModal(d.id, () => { close(); go(S.view); });
+      const be = $('#dedit', m); if (be) be.onclick = () => editModal(d, () => { close(); go(S.view); });
+      const bd = $('#ddel', m); if (bd) bd.onclick = async () => {
+        if (!confirm('Hapus pengecekan ' + d.kodeKendaraan + ' (' + fmtTgl(d.tanggal) + ' ' + d.jam + ')?\nTemuan terkait dan fotonya ikut terhapus. Tidak bisa dibatalkan.')) return;
+        try {
+          loading(true, 'Menghapus…');
+          await api('deletePemeriksaan', { id: d.id }, { silent: true });
+          close(); toast('Pengecekan dihapus'); go(S.view);
+        } catch (e) { toast(e.message, true); } finally { loading(false); }
+      };
+    });
+  }
+
+  async function editModal(d, selesai) {
+    if (!S.users.length) {
+      try { S.users = await api('users', {}, { silent: true }); } catch (e) { S.users = []; }
+    }
+    const names = pjUsers().map((u) => u.nama);
+    if (d.penanggungJawab && names.indexOf(d.penanggungJawab) < 0) names.unshift(d.penanggungJawab);
+    modal(`<div class="modal-h"><h3>Edit data pengecekan</h3><button class="x" data-close>×</button></div>
+      <div class="muted small">${esc(d.kodeKendaraan)} · ${esc(fmtTgl(d.tanggal))} ${esc(d.jam)}. Isi item tidak bisa diedit; bila salah, hapus lalu isi ulang.</div>
+      <label class="f">Penanggung jawab</label>
+      <select class="in" id="ep">${names.map((n) => `<option value="${esc(n)}" ${n === d.penanggungJawab ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>
+      <label class="f">Lama pemanasan (menit)</label>
+      <input class="in" id="em" inputmode="numeric" value="${esc(d.pemanasanMenit || '')}">
+      <label class="f">Catatan</label>
+      <textarea class="in" id="ec">${esc(d.catatan || '')}</textarea>
+      <button class="btn block" style="margin-top:18px" id="es">Simpan</button>`, (m, close) => {
+      $('#es', m).onclick = async () => {
+        try {
+          loading(true, 'Menyimpan…');
+          await api('editPemeriksaan', { id: d.id, penanggungJawab: $('#ep', m).value, pemanasan: $('#em', m).value.trim(), catatan: $('#ec', m).value.trim() }, { silent: true });
+          close(); toast('Data diperbarui'); selesai();
+        } catch (e) { toast(e.message, true); } finally { loading(false); }
+      };
     });
   }
 
@@ -838,12 +878,13 @@
       <div class="page-title"><h2>Kelola pengguna</h2><button class="btn sm" id="au">+ Tambah</button></div>
       <div class="list">${list.map((u) => `
         <div class="card hrow" style="cursor:default"><div class="vk">${esc(initials(u.nama))}</div>
-          <div class="hi"><b>${esc(u.nama)}</b><span class="muted small">@${esc(u.username)} · ${esc(u.jabatan || '-')} · ${u.role === 'admin' ? 'Admin' : 'Petugas'}</span></div>
+          <div class="hi"><b>${esc(u.nama)}</b><span class="muted small">@${esc(u.username)} · ${esc(u.jabatan || '-')} · ${esc(ROLE[u.role] || 'Petugas')}</span></div>
           <div style="display:flex;flex-direction:column;gap:6px">
             <button class="btn ghost sm" data-rp="${esc(u.username)}">Reset PW</button>
-            ${u.username !== S.user.username ? `<button class="btn ghost sm" data-ac="${esc(u.username)}" data-to="${u.aktif ? 0 : 1}">${u.aktif ? 'Nonaktifkan' : 'Aktifkan'}</button>` : ''}
+            ${u.username !== S.user.username ? `<button class="btn ghost sm" data-rl="${esc(u.username)}" data-cur="${esc(u.role)}">Ubah role</button><button class="btn ghost sm" data-ac="${esc(u.username)}" data-to="${u.aktif ? 0 : 1}">${u.aktif ? 'Nonaktifkan' : 'Aktifkan'}</button>` : ''}
           </div></div>`).join('')}</div>`;
     $('#au').onclick = addUserModal;
+    $$('[data-rl]').forEach((b) => { b.onclick = () => roleModal(b.dataset.rl, b.dataset.cur); });
     $$('[data-rp]').forEach((b) => {
       b.onclick = async () => {
         const pw = prompt('Password baru untuk ' + b.dataset.rp + ' (min. 6 karakter):');
@@ -858,12 +899,27 @@
     });
   }
 
+  function roleModal(username, cur) {
+    modal(`<div class="modal-h"><h3>Ubah role @${esc(username)}</h3><button class="x" data-close>×</button></div>
+      <label class="f">Role</label>
+      <select class="in" id="rr">${Object.keys(ROLE).map((k) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${ROLE[k]}</option>`).join('')}</select>
+      <button class="btn block" style="margin-top:18px" id="rs2">Simpan</button>`, (m, close) => {
+      $('#rs2', m).onclick = async () => {
+        try {
+          loading(true, 'Menyimpan…');
+          await api('setUserRole', { username: username, role: $('#rr', m).value }, { silent: true });
+          S.users = []; close(); toast('Role diperbarui'); go('users');
+        } catch (e) { toast(e.message, true); } finally { loading(false); }
+      };
+    });
+  }
+
   function addUserModal() {
     modal(`<div class="modal-h"><h3>Tambah pengguna</h3><button class="x" data-close>×</button></div>
       <label class="f">Nama lengkap</label><input class="in" id="un">
       <label class="f">Jabatan</label><input class="in" id="uj" placeholder="mis. Anggota PKP-PK">
       <div class="row2"><div><label class="f">Username</label><input class="in" id="uu" autocapitalize="none"></div>
-      <div><label class="f">Role</label><select class="in" id="ur"><option value="user">Petugas</option><option value="admin">Admin</option></select></div></div>
+      <div><label class="f">Role</label><select class="in" id="ur"><option value="user">Petugas</option><option value="pj">Penanggung jawab</option><option value="admin">Admin</option></select></div></div>
       <label class="f">Password awal (min. 6)</label><input class="in" id="up" type="text">
       <button class="btn block" style="margin-top:18px" id="us">Simpan</button>`, (m, close) => {
       $('#us', m).onclick = async () => {
