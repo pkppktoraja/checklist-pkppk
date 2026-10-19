@@ -520,17 +520,30 @@
       <div class="filters">
         <select class="in" id="rk"><option value="">Semua kendaraan</option>${VEHICLES.map((v) => `<option value="${v.kode}" ${f.kode === v.kode ? 'selected' : ''}>${v.kode} · ${esc(v.nama)}</option>`).join('')}</select>
         <input class="in" type="date" id="rd" value="${f.dari}"><input class="in" type="date" id="rs" value="${f.sampai}">
-      </div><div id="rl"><div class="skel"></div></div>`;
+      </div>
+      <div class="chips"><button type="button" data-q="0">Hari ini</button><button type="button" data-q="1">Kemarin</button></div>
+      <button class="btn block" id="rzip" style="margin-bottom:12px" disabled>Unduh semua PDF</button>
+      <div id="rl"><div class="skel"></div></div>`;
     const load = async () => {
       f.kode = $('#rk').value; f.dari = $('#rd').value; f.sampai = $('#rs').value;
       const rl = $('#rl'); rl.innerHTML = '<div class="skel"></div><div class="skel"></div>';
+      const zb = $('#rzip'); zb.disabled = true; zb.textContent = 'Unduh semua PDF';
       try {
         const list = await api('listPemeriksaan', { kode: f.kode, dari: f.dari, sampai: f.sampai, limit: 150 }, { silent: true });
+        const n = list.length;
+        zb.textContent = n === 0 ? 'Tidak ada pengecekan untuk diunduh'
+          : n > 40 ? 'Terlalu banyak (' + n + ' pengecekan), persempit tanggal'
+          : n === 1 ? 'Unduh PDF (1 pengecekan)' : 'Unduh semua PDF (' + n + ' pengecekan, ZIP)';
+        zb.disabled = n === 0 || n > 40;
         rl.innerHTML = buildRiwayat(list, f);
         $$('.hrow[data-id]', rl).forEach((c) => { c.onclick = () => detailModal(c.dataset.id); });
       } catch (err) { rl.innerHTML = '<div class="card empty">' + esc(err.message) + '</div>'; }
     };
     ['rk', 'rd', 'rs'].forEach((id) => { $('#' + id).onchange = load; });
+    $$('[data-q]').forEach((b) => {
+      b.onclick = () => { const d = ymd(new Date(Date.now() - Number(b.dataset.q) * 86400000)); $('#rd').value = d; $('#rs').value = d; load(); };
+    });
+    $('#rzip').onclick = () => unduhSemua(f);
     load();
   }
 
@@ -550,16 +563,79 @@
     return pdfLib;
   }
 
+  function buatDokumen(d) {
+    const v = vehicleOf(d.kodeKendaraan) || { kode: d.kodeKendaraan, nama: d.namaKendaraan, jenis: '' };
+    // Satuan isian (psi, °C, V) tidak disimpan di data; ambil dari daftar checklist.
+    const unit = {};
+    (CHECKLISTS[d.kodeKendaraan] || []).forEach((sec) => sec.items.forEach((it) => { if (it.u) unit[sec.title + '|' + it.n] = it.u; }));
+    const items = (d.items || []).map((x) => Object.assign({}, x, { u: x.u || unit[x.s + '|' + x.n] || '' }));
+    return window.PKPPKPdf.buat(Object.assign({}, d, { items: items }), v, CFG.NAMA_UNIT);
+  }
+
+  let zipLib = null;
+  function muatJsZip() {
+    if (window.JSZip) return Promise.resolve();
+    if (!zipLib) {
+      zipLib = new Promise((ok, no) => {
+        const sc = document.createElement('script');
+        sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+        sc.onload = ok;
+        sc.onerror = () => { zipLib = null; no(new Error('Library ZIP gagal dimuat, periksa koneksi internet')); };
+        document.head.appendChild(sc);
+      });
+    }
+    return zipLib;
+  }
+
+  function unduhBlob(blob, nama) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = nama;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  }
+
+  // Unduh semua pengecekan pada filter Riwayat (tanggal / kendaraan) sebagai satu ZIP berisi PDF per pengecekan.
+  async function unduhSemua(f) {
+    const btn = $('#rzip');
+    if (btn) btn.disabled = true;
+    const prog = (t) => { const el = $('#loading-text'); if (el) el.textContent = t; };
+    try {
+      loading(true, 'Menyiapkan data…');
+      const list = await api('exportPemeriksaan', { kode: f.kode, dari: f.dari, sampai: f.sampai }, { silent: true });
+      if (!list.length) { toast('Tidak ada pengecekan pada filter ini', true); return; }
+      await muatJsPdf();
+      if (list.length === 1) {
+        buatDokumen(list[0]).save(window.PKPPKPdf.namaFile(list[0]));
+        toast('PDF diunduh');
+        return;
+      }
+      await muatJsZip();
+      const zip = new window.JSZip();
+      const perTanggal = f.dari !== f.sampai;
+      for (let i = 0; i < list.length; i++) {
+        prog('Membuat PDF ' + (i + 1) + ' dari ' + list.length + '…');
+        await new Promise((r) => setTimeout(r, 30)); // beri waktu layar memperbarui tampilan
+        const d = list[i];
+        zip.file((perTanggal ? d.tanggal + '/' : '') + window.PKPPKPdf.namaFile(d), buatDokumen(d).output('arraybuffer'));
+      }
+      prog('Mengemas ZIP…');
+      const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
+      unduhBlob(blob, 'Checklist_PKPPK_' + f.dari + (f.sampai !== f.dari ? '_sd_' + f.sampai : '') + (f.kode ? '_' + f.kode : '') + '.zip');
+      toast(list.length + ' PDF diunduh dalam satu ZIP');
+    } catch (err) {
+      toast('Gagal mengunduh: ' + err.message, true);
+    } finally {
+      loading(false);
+      if (btn) btn.disabled = false;
+    }
+  }
+
   async function unduhPdf(d) {
     try {
       loading(true, 'Membuat PDF…');
       await muatJsPdf();
-      const v = vehicleOf(d.kodeKendaraan) || { kode: d.kodeKendaraan, nama: d.namaKendaraan, jenis: '' };
-      // Satuan isian (psi, °C, V) tidak disimpan di data; ambil dari daftar checklist.
-      const unit = {};
-      (CHECKLISTS[d.kodeKendaraan] || []).forEach((sec) => sec.items.forEach((it) => { if (it.u) unit[sec.title + '|' + it.n] = it.u; }));
-      const items = (d.items || []).map((x) => Object.assign({}, x, { u: x.u || unit[x.s + '|' + x.n] || '' }));
-      const doc = window.PKPPKPdf.buat(Object.assign({}, d, { items: items }), v, CFG.NAMA_UNIT);
+      const doc = buatDokumen(d);
       doc.save(window.PKPPKPdf.namaFile(d));
       toast('PDF diunduh');
     } catch (err) {
