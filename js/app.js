@@ -245,6 +245,10 @@
     aktif.forEach((r) => { (byK[r.kodeKendaraan] = byK[r.kodeKendaraan] || []).push(r); });
     const doneN = VEHICLES.filter((v) => byK[v.kode]).length;
     const max = Math.max(1, ...d.last7.map((x) => x.jumlah));
+    // Status persetujuan checklist milik petugas yang sedang login (hari ini)
+    const mine = d.today.filter((r) => r.pelaksana === S.user.username);
+    const stOf = (r) => r.status || 'Disetujui';
+    const stCls = (s) => (s === 'Disetujui' ? 'ok' : s === 'Ditolak' ? 'bad' : 'gray');
     $('#main').innerHTML = `
       <div class="page-title"><div><div class="muted small">${esc(fmtHariPanjang(d.tanggal))}</div><h2>Halo, ${esc(S.user.nama.split(' ')[0])} 👋</h2></div></div>
       ${hari.libur ? `<div class="card libur-banner"><b>Hari ini libur · ${esc(hari.alasan)}</b><span>Pengecekan tidak diwajibkan, tetapi tetap bisa diisi bila ada.</span></div>`
@@ -256,6 +260,20 @@
         <div class="card stat ${d.openTemuan.length ? 'alert' : ''}"><div class="num">${d.openTemuan.length}</div><div class="lbl">Temuan belum diperbaiki</div></div>
         <div class="card stat wide"><div class="num">${aktif.length}</div><div class="lbl">Pengisian hari ini</div></div>
       </div>
+      ${S.user.role !== 'admin' ? `
+      <div class="section-t">Persetujuan checklist saya hari ini</div>
+      <div class="card">
+        ${mine.length ? mine.map((r) => {
+          const s = stOf(r);
+          return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line, #eee)">
+            <div><b>${esc(r.kodeKendaraan)}</b> <span class="muted small">${esc(r.namaKendaraan)} · ${esc(r.jam)}</span>
+              ${s === 'Ditolak' && r.alasanTolak ? `<div class="small" style="color:var(--bad)">${esc(r.alasanTolak)}</div>` : ''}
+              ${s === 'Disetujui' && r.disetujuiOleh ? `<div class="muted small">Disetujui oleh ${esc(r.disetujuiOleh)}</div>` : ''}
+            </div>
+            <span class="pill ${stCls(s)}">${esc(s)}</span>
+          </div>`;
+        }).join('') : '<div class="empty" style="padding:14px">Kamu belum mengirim checklist hari ini.</div>'}
+      </div>` : ''}
       <div class="section-t">Status kendaraan hari ini</div>
       <div class="grid vgrid">
         ${VEHICLES.map((v) => {
