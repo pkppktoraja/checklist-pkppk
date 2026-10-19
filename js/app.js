@@ -3,6 +3,13 @@
   const CFG = window.APP_CONFIG;
   const VEHICLES = window.VEHICLES;
   const CHECKLISTS = window.CHECKLISTS;
+  // Item tambahan: isi tangki air saat ini (WT). Ditambahkan di sini agar tidak perlu mengubah checklists.js.
+  (function () {
+    const w = CHECKLISTS && CHECKLISTS.WT;
+    if (w && !w.some((sec) => sec.items.some((it) => it.n === 'Isi tangki air saat ini'))) {
+      w.push({ title: 'Tangki air', items: [{ n: 'Isi tangki air saat ini', q: 'Kapasitas penuh 5.000 liter', k: 'val', u: 'liter', max: 5000 }] });
+    }
+  })();
   const $ = (s, el) => (el || document).querySelector(s);
   const $$ = (s, el) => Array.from((el || document).querySelectorAll(s));
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -80,6 +87,9 @@
     return { libur: false, khusus: false, alasan: '', sumber: '' };
   }
   const initials = (n) => (n || '?').trim().split(/\s+/).slice(0, 2).map((x) => x[0]).join('').toUpperCase();
+  // Kapasitas kendaraan (ditampilkan di pilihan kendaraan dan form). Bisa juga diisi lewat field `kapasitas` di VEHICLES.
+  const KAPASITAS = { WT: '5.000 liter' };
+  const kapOf = (v) => v.kapasitas || KAPASITAS[v.kode] || '';
   const ROLE = { admin: 'Admin', pj: 'Penanggung jawab', user: 'Petugas' };
   // Daftar penanggung jawab: user ber-role pj; bila belum ada satu pun, tampilkan semua agar form tetap bisa dipakai.
   const pjUsers = () => { const p = S.users.filter((u) => u.role === 'pj'); return p.length ? p : S.users; };
@@ -325,7 +335,7 @@
       <div class="page-title"><h2>Pilih kendaraan</h2></div>
       <div class="grid vgrid">${VEHICLES.map((v) => `
         <div class="card veh pick" data-k="${v.kode}"><div class="vk">${v.kode}</div>
-        <div class="vi"><b>${esc(v.nama)}</b><span>${esc(v.jenis)}</span></div></div>`).join('')}</div>`;
+        <div class="vi"><b>${esc(v.nama)}</b><span>${esc(v.jenis)}${kapOf(v) ? ' · Kapasitas ' + esc(kapOf(v)) : ''}</span></div></div>`).join('')}</div>`;
     $$('.pick').forEach((c) => { c.onclick = () => renderForm(c.dataset.k); });
   }
 
@@ -336,7 +346,7 @@
     const v = vehicleOf(kode);
     const items = [];
     CHECKLISTS[kode].forEach((sec) => sec.items.forEach((it) => {
-      items.push({ s: sec.title, n: it.n, q: it.q || '', k: it.k, u: it.u || '', hasil: '', nilai: '', ket: '', foto: '' });
+      items.push({ s: sec.title, n: it.n, q: it.q || '', k: it.k, u: it.u || '', max: it.max || 0, hasil: '', nilai: '', ket: '', foto: '' });
     }));
     S.form = { kode: kode, items: items };
     let idx = 0;
@@ -360,7 +370,7 @@
 
     const opts = pjUsers().map((u) => `<option value="${esc(u.nama)}">${esc(u.nama)}${u.jabatan ? ' — ' + esc(u.jabatan) : ''}</option>`).join('');
     $('#main').innerHTML = `
-      <div class="page-title"><div><button class="link" id="back">← Ganti kendaraan</button><h2>${esc(v.kode)} · ${esc(v.nama)}</h2></div></div>
+      <div class="page-title"><div><button class="link" id="back">← Ganti kendaraan</button><h2>${esc(v.kode)} · ${esc(v.nama)}</h2>${kapOf(v) ? '<div class="muted small">Kapasitas tangki ' + esc(kapOf(v)) + '</div>' : ''}</div></div>
       <div class="card">
         <div class="row2">
           <div><label class="f" style="margin-top:0">Pelaksana</label><input class="in" value="${esc(S.user.nama)}" disabled></div>
@@ -444,6 +454,13 @@
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         el.style.outline = '2px solid var(--brand)'; setTimeout(() => { el.style.outline = ''; }, 1800);
         toast('Masih ada item yang belum diisi', true); return;
+      }
+      const over = items.findIndex((x) => x.k === 'val' && x.max && (isNaN(Number(String(x.nilai).replace(',', '.'))) || Number(String(x.nilai).replace(',', '.')) > x.max || Number(String(x.nilai).replace(',', '.')) < 0));
+      if (over >= 0) {
+        const el = $('.item[data-i="' + over + '"]', secs);
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        $('.val', el).focus();
+        toast('Nilai ' + items[over].n + ' harus berupa angka 0 sampai ' + items[over].max + ' ' + items[over].u + ' (tulis tanpa titik)', true); return;
       }
       const noKet = items.findIndex((x) => (x.hasil === 'Rusak' || x.hasil === 'Kurang') && !x.ket.trim());
       if (noKet >= 0) {
@@ -540,7 +557,7 @@
       if (byDate[d]) {
         out += byDate[d].map((r) => `
           <div class="card hrow" data-id="${esc(r.id)}"><div class="vk">${esc(r.kodeKendaraan)}</div>
-            <div class="hi"><b>${esc(r.namaKendaraan)}</b><span class="muted small">${esc(fmtTgl(r.tanggal))} ${esc(r.jam)} · ${esc(r.namaPelaksana)}</span><br><span class="muted small">PJ: ${esc(r.penanggungJawab)}</span></div>
+            <div class="hi"><b>${esc(r.namaKendaraan)}</b><span class="muted small">${esc(fmtTgl(r.tanggal))} ${esc(r.jam)} · ${esc(r.namaPelaksana)}</span><br><span class="muted small">PJ: ${esc(r.penanggungJawab)}</span>${r.tglDiedit ? ' <span class="pill gray" style="margin-left:4px">Diedit</span>' : ''}</div>
             ${(r.status || 'Disetujui') === 'Disetujui' ? `<span class="pill ${Number(r.jumlahTemuan) ? 'warn' : 'ok'}">${Number(r.jumlahTemuan) ? r.jumlahTemuan + ' temuan' : 'Aman'}</span>` : `<span class="pill ${r.status === 'Ditolak' ? 'bad' : 'gray'}">${esc(r.status)}</span>`}</div>`).join('');
       } else if (!f.kode && d < hariIni) {
         const t = dayType(d);
@@ -699,6 +716,7 @@
     d.items.forEach((x) => { (groups[x.s] = groups[x.s] || []).push(x); });
     modal(`<div class="modal-h"><h3>${esc(d.kodeKendaraan)} · ${esc(d.namaKendaraan)}</h3><button class="x" data-close>×</button></div>
       <div class="muted small">${esc(fmtTgl(d.tanggal))} ${esc(d.jam)}<br>Pelaksana: <b>${esc(d.namaPelaksana)}</b> · Penanggung jawab: <b>${esc(d.penanggungJawab)}</b>${d.pemanasanMenit ? '<br>Pemanasan: ' + esc(d.pemanasanMenit) + ' menit' : ''}${d.catatan ? '<br>Catatan: ' + esc(d.catatan) : ''}</div>
+      ${d.tglDiedit ? '<div style="margin-top:8px"><span class="pill gray">Diedit</span> <span class="muted small">oleh ' + esc(d.diEditOleh || '-') + ' · ' + esc(d.tglDiedit) + '</span></div>' : ''}
       ${(d.status || 'Disetujui') === 'Disetujui' ? '<button class="btn sm" id="dpdf" style="margin-top:12px">Unduh PDF</button>' : ''}
       ${d.status === 'Menunggu' ? '<div style="margin-top:12px"><span class="pill gray">Menunggu persetujuan admin</span></div>' : ''}
       ${d.status === 'Ditolak' ? `<div class="card libur-banner tolak" style="margin-top:12px"><b>Ditolak oleh ${esc(d.disetujuiOleh || '-')}</b><span>${esc(d.alasanTolak || '')}</span></div>` : ''}
@@ -730,20 +748,88 @@
     }
     const names = pjUsers().map((u) => u.nama);
     if (d.penanggungJawab && names.indexOf(d.penanggungJawab) < 0) names.unshift(d.penanggungJawab);
-    modal(`<div class="modal-h"><h3>Edit data pengecekan</h3><button class="x" data-close>×</button></div>
-      <div class="muted small">${esc(d.kodeKendaraan)} · ${esc(fmtTgl(d.tanggal))} ${esc(d.jam)}. Isi item tidak bisa diedit; bila salah, hapus lalu isi ulang.</div>
+    const items = (d.items || []).map((x) => ({ s: x.s, n: x.n, q: x.q || '', k: x.k, hasil: x.hasil || '', nilai: x.nilai || '', ket: x.ket || '', fotoUrl: x.fotoUrl || '', foto: '' }));
+    let last = null, rows = '';
+    items.forEach((it, i) => {
+      if (it.s !== last) { rows += `<div class="dgroup">${esc(it.s)}</div>`; last = it.s; }
+      const right = it.k === 'val'
+        ? `<div class="valbox"><input class="in val" inputmode="decimal" value="${esc(it.nilai)}"></div>`
+        : `<div class="seg"><button type="button" class="g" data-v="${GOOD[it.k]}">${GOOD[it.k]}</button><button type="button" class="r" data-v="${BAD[it.k]}">${BAD[it.k]}</button></div>`;
+      rows += `<div class="item" data-i="${i}">
+        <div class="item-top"><div class="item-name">${esc(it.n)}${it.q ? '<small>' + esc(it.q) + '</small>' : ''}</div>${right}</div>
+        <div class="item-extra hidden">
+          <input class="in ket" value="${esc(it.ket)}" placeholder="Jelaskan kerusakan / kekurangan…">
+          <div class="photo-row"><label class="photo-btn">${ICON.cam} ${it.fotoUrl ? 'Ganti foto' : 'Foto temuan'}<input type="file" accept="image/*" capture="environment"></label>
+            <div class="pv ${it.fotoUrl ? '' : 'hidden'}">${it.fotoUrl ? '<img src="' + esc(it.fotoUrl) + '" data-zoom="' + esc(it.fotoUrl) + '" alt="foto">' : ''}</div></div>
+        </div></div>`;
+    });
+    modal(`<div class="modal-h"><h3>Edit pengecekan</h3><button class="x" data-close>×</button></div>
+      <div class="muted small">${esc(d.kodeKendaraan)} · ${esc(fmtTgl(d.tanggal))} ${esc(d.jam)} · pelaksana ${esc(d.namaPelaksana)}.<br>Setelah disimpan, data ditandai <b>Diedit</b>.</div>
       <label class="f">Penanggung jawab</label>
       <select class="in" id="ep">${names.map((n) => `<option value="${esc(n)}" ${n === d.penanggungJawab ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>
       <label class="f">Lama pemanasan (menit)</label>
       <input class="in" id="em" inputmode="numeric" value="${esc(d.pemanasanMenit || '')}">
       <label class="f">Catatan</label>
       <textarea class="in" id="ec">${esc(d.catatan || '')}</textarea>
-      <button class="btn block" style="margin-top:18px" id="es">Simpan</button>`, (m, close) => {
+      <div id="eitems">${rows}</div>
+      <button class="btn block" style="margin-top:18px" id="es">Simpan perubahan</button>`, (m, close) => {
+      const box = $('#eitems', m);
+      const paint = (i) => {
+        const it = items[i];
+        const el = $('.item[data-i="' + i + '"]', box);
+        const bad = it.hasil === 'Rusak' || it.hasil === 'Kurang';
+        el.classList.toggle('bad', bad);
+        el.classList.toggle('done', it.k === 'val' ? it.nilai.trim() !== '' : it.hasil !== '');
+        $$('.seg button', el).forEach((b) => b.classList.toggle('on', b.dataset.v === it.hasil));
+        $('.item-extra', el).classList.toggle('hidden', !bad);
+      };
+      items.forEach((_, i) => paint(i));
+      box.addEventListener('click', (e) => {
+        const sb = e.target.closest('.seg button');
+        if (!sb) return;
+        const i = +sb.closest('.item').dataset.i;
+        items[i].hasil = sb.dataset.v;
+        paint(i);
+      });
+      box.addEventListener('input', (e) => {
+        const el = e.target.closest('.item'); if (!el) return;
+        const i = +el.dataset.i;
+        if (e.target.classList.contains('val')) { items[i].nilai = e.target.value; paint(i); }
+        else if (e.target.classList.contains('ket')) items[i].ket = e.target.value;
+      });
+      box.addEventListener('change', async (e) => {
+        if (e.target.type !== 'file' || !e.target.files[0]) return;
+        const el = e.target.closest('.item'); const i = +el.dataset.i;
+        try {
+          loading(true, 'Memproses foto…');
+          items[i].foto = await compress(e.target.files[0]);
+          const pv = $('.pv', el);
+          pv.innerHTML = '<img src="' + items[i].foto + '" data-zoom="' + items[i].foto + '" alt="foto">';
+          pv.classList.remove('hidden');
+        } catch (err) { toast('Foto gagal diproses', true); }
+        finally { loading(false); e.target.value = ''; }
+      });
       $('#es', m).onclick = async () => {
+        const first = items.findIndex((x) => (x.k === 'val' ? x.nilai.trim() === '' : x.hasil === ''));
+        if (first >= 0) {
+          const el = $('.item[data-i="' + first + '"]', box);
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          toast('Masih ada item yang kosong', true); return;
+        }
+        const noKet = items.findIndex((x) => (x.hasil === 'Rusak' || x.hasil === 'Kurang') && !x.ket.trim());
+        if (noKet >= 0) {
+          const el = $('.item[data-i="' + noKet + '"]', box);
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          $('.ket', el).focus();
+          toast('Isi keterangan untuk item yang rusak/kurang', true); return;
+        }
         try {
           loading(true, 'Menyimpan…');
-          await api('editPemeriksaan', { id: d.id, penanggungJawab: $('#ep', m).value, pemanasan: $('#em', m).value.trim(), catatan: $('#ec', m).value.trim() }, { silent: true });
-          close(); toast('Data diperbarui'); selesai();
+          await api('editPemeriksaan', {
+            id: d.id, penanggungJawab: $('#ep', m).value, pemanasan: $('#em', m).value.trim(), catatan: $('#ec', m).value.trim(),
+            items: items.map((x) => ({ s: x.s, n: x.n, hasil: x.hasil, nilai: x.nilai, ket: x.ket, foto: x.foto }))
+          }, { silent: true });
+          close(); toast('Data diperbarui dan ditandai Diedit'); selesai();
         } catch (e) { toast(e.message, true); } finally { loading(false); }
       };
     });
@@ -769,6 +855,7 @@
           <div class="hi"><b>${esc(r.namaKendaraan)}</b><span class="muted small">${esc(fmtTgl(r.tanggal))} ${esc(r.jam)}</span><br><span class="muted small">PJ: ${esc(r.penanggungJawab)}</span>
             ${s === 'Ditolak' && r.alasanTolak ? `<div class="small" style="color:var(--bad);margin-top:4px">${esc(r.alasanTolak)}</div>` : ''}
             ${s === 'Disetujui' && r.disetujuiOleh ? `<div class="muted small">Disetujui oleh ${esc(r.disetujuiOleh)}</div>` : ''}
+            ${r.tglDiedit ? '<div><span class="pill gray">Diedit</span></div>' : ''}
             ${s === 'Ditolak' ? `<button class="btn sm" data-isi="${esc(r.kodeKendaraan)}" style="margin-top:8px">Isi ulang</button>` : ''}
           </div>
           <span class="pill ${stCls(s)}">${esc(s)}</span></div>`;
