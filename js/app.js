@@ -68,6 +68,14 @@
     const p = s.split('-');
     return new Date(+p[0], +p[1] - 1, +p[2]).toLocaleDateString('id-ID', { weekday: 'short' });
   }
+  // "3 hari lalu" / "hari ini" untuk tanggal yyyy-mm-dd
+  function hariLalu(s) {
+    const p = String(s).split('-');
+    const a = new Date(+p[0], +p[1] - 1, +p[2]);
+    const n = new Date();
+    const k = Math.round((new Date(n.getFullYear(), n.getMonth(), n.getDate()) - a) / 86400000);
+    return k <= 0 ? 'hari ini' : k + ' hari lalu';
+  }
   function ymd(d) {
     const z = (n) => String(n).padStart(2, '0');
     return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate());
@@ -90,6 +98,22 @@
   // Kapasitas kendaraan (ditampilkan di pilihan kendaraan dan form). Bisa juga diisi lewat field `kapasitas` di VEHICLES.
   const KAPASITAS = { WT: '5.000 liter' };
   const kapOf = (v) => v.kapasitas || KAPASITAS[v.kode] || '';
+  const sapa = () => { const h = new Date().getHours(); return h < 11 ? 'Selamat pagi' : h < 15 ? 'Selamat siang' : h < 18 ? 'Selamat sore' : 'Selamat malam'; };
+  // Angka naik dari 0 (dipakai di papan kesiapan Beranda)
+  function countUp() {
+    $$('[data-n]').forEach((el) => {
+      const n = Number(el.dataset.n);
+      if (!n) return;
+      const t0 = performance.now();
+      el.textContent = '0';
+      const step = (t) => {
+        const k = Math.min(1, (t - t0) / 700);
+        el.textContent = Math.round(n * (1 - Math.pow(1 - k, 3)));
+        if (k < 1) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    });
+  }
   const ROLE = { admin: 'Admin', pj: 'Penanggung jawab', user: 'Petugas' };
   // Daftar penanggung jawab: user ber-role pj; bila belum ada satu pun, tampilkan semua agar form tetap bisa dipakai.
   const pjUsers = () => { const p = S.users.filter((u) => u.role === 'pj'); return p.length ? p : S.users; };
@@ -266,23 +290,39 @@
     const mine = mineToday.concat((d.menungguSaya || []).filter((r) => !seen[r.id]));
     const stOf = (r) => r.status || 'Disetujui';
     const stCls = (s) => (s === 'Disetujui' ? 'ok' : s === 'Ditolak' ? 'bad' : 'gray');
+    // Kondisi tiap armada hari ini: ok (aman), warn (ada temuan), wait (menunggu persetujuan), '' (belum dicek)
+    const kondisi = (v) => {
+      const r = byK[v.kode];
+      if (!r) return '';
+      if (!r.some((x) => (x.status || 'Disetujui') === 'Disetujui')) return 'wait';
+      return r.reduce((a, x) => a + Number(x.jumlahTemuan || 0), 0) ? 'warn' : 'ok';
+    };
+    const pct = Math.round(doneN / VEHICLES.length * 100);
+    const libOnly = hari.libur && !doneN;
+    const msgHero = libOnly ? 'Hari libur, pengecekan tidak diwajibkan' : doneN === VEHICLES.length ? 'Semua armada sudah dicek' : (VEHICLES.length - doneN) + ' armada belum dicek';
+    const hero = `<div class="hero">
+      <div class="ring"><svg viewBox="0 0 44 44"><defs><linearGradient id="rgG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f97316"/><stop offset="1" stop-color="#ef4444"/></linearGradient></defs>
+        <circle class="rg-bg" cx="22" cy="22" r="19"/><circle class="rg-fg" cx="22" cy="22" r="19" style="--pct:${pct}"/></svg>
+        <div class="ring-t"><b>${libOnly ? 'Libur' : doneN + '/' + VEHICLES.length}</b><small>${libOnly ? '' : 'dicek'}</small></div></div>
+      <div class="hero-body"><div class="hero-k">Kesiapan armada hari ini</div><div class="hero-h">${esc(msgHero)}</div>
+        <div class="bays">${VEHICLES.map((v, i) => `<div class="bay ${kondisi(v)}" style="--i:${i}" title="${esc(v.nama)}"><i></i>${esc(v.kode)}</div>`).join('')}</div></div>
+      <div class="hero-stats">
+        <div class="hs ${d.openTemuan.length ? 'warn' : ''}"><b data-n="${d.openTemuan.length}">${d.openTemuan.length}</b><span>Temuan belum diperbaiki</span></div>
+        <div class="hs"><b data-n="${aktif.length}">${aktif.length}</b><span>Pengisian hari ini</span></div>
+      </div></div>`;
     $('#main').innerHTML = `
-      <div class="page-title"><div><div class="muted small">${esc(fmtHariPanjang(d.tanggal))}</div><h2>Halo, ${esc(S.user.nama.split(' ')[0])} 👋</h2></div></div>
+      <div class="page-title"><div><div class="muted small">${esc(fmtHariPanjang(d.tanggal))}</div><h2>${sapa()}, ${esc(S.user.nama.split(' ')[0])} 👋</h2></div></div>
       ${hari.libur ? `<div class="card libur-banner"><b>Hari ini libur · ${esc(hari.alasan)}</b><span>Pengecekan tidak diwajibkan, tetapi tetap bisa diisi bila ada.</span></div>`
           : hari.khusus ? `<div class="card libur-banner khusus"><b>Hari kerja khusus · ${esc(hari.alasan)}</b><span>Pengecekan tetap dilakukan hari ini.</span></div>` : ''}
       ${(d.ditolakSaya || []).map((x) => `<div class="card libur-banner tolak"><b>Ditolak · ${esc(x.kodeKendaraan)} (${esc(fmtTgl(x.tanggal))} ${esc(x.jam)})</b><span>${esc(x.alasanTolak || '')}</span><div><button class="btn sm" data-isi="${esc(x.kodeKendaraan)}" style="margin-top:8px">Isi ulang</button></div></div>`).join('')}
       ${S.user.role === 'admin' && d.menunggu ? `<div class="card libur-banner"><b>${d.menunggu} checklist menunggu persetujuan</b><div><button class="btn sm" id="gosetuju" style="margin-top:8px">Tinjau sekarang</button></div></div>` : ''}
-      <div class="grid g3">
-        <div class="card stat"><div class="num">${hari.libur && !doneN ? 'Libur' : doneN + '/' + VEHICLES.length}</div><div class="lbl">Kendaraan dicek hari ini</div></div>
-        <div class="card stat ${d.openTemuan.length ? 'alert' : ''}"><div class="num">${d.openTemuan.length}</div><div class="lbl">Temuan belum diperbaiki</div></div>
-        <div class="card stat wide"><div class="num">${aktif.length}</div><div class="lbl">Pengisian hari ini</div></div>
-      </div>
+      ${hero}
       ${S.user.role !== 'admin' ? `
       <div class="section-t">Persetujuan checklist saya</div>
       <div class="card">
         ${mine.length ? mine.map((r) => {
           const s = stOf(r);
-          return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line, #eee)">
+          return `<div class="appr-row">
             <div><b>${esc(r.kodeKendaraan)}</b> <span class="muted small">${esc(r.namaKendaraan)} · ${r.tanggal !== d.tanggal ? esc(fmtTgl(r.tanggal)) + ' ' : ''}${esc(r.jam)}</span>
               ${s === 'Ditolak' && r.alasanTolak ? `<div class="small" style="color:var(--bad)">${esc(r.alasanTolak)}</div>` : ''}
               ${s === 'Disetujui' && r.disetujuiOleh ? `<div class="muted small">Disetujui oleh ${esc(r.disetujuiOleh)}</div>` : ''}
@@ -297,7 +337,7 @@
           const r = byK[v.kode];
           const last = r ? r[r.length - 1] : null;
           const tem = r ? r.reduce((a, x) => a + Number(x.jumlahTemuan || 0), 0) : 0;
-          return `<div class="card veh ${r ? 'done' : ''}">
+          return `<div class="card veh ${r ? 'done ' + kondisi(v) : ''}">
             <div class="vk">${v.kode}</div>
             <div class="vi"><b>${esc(v.nama)}</b>
               <span>${last ? 'Oleh ' + esc(last.namaPelaksana) + ' · ' + esc(last.jam) : (hari.libur ? 'Libur · ' + esc(hari.alasan) : 'Belum dicek')}</span></div>
@@ -323,6 +363,7 @@
     const at = $('#allt'); if (at) at.onclick = () => go('temuan');
     const gs = $('#gosetuju'); if (gs) gs.onclick = () => go('setuju');
     bindTemActions();
+    countUp();
   }
 
   /* ---------- ISI CHECKLIST ---------- */
@@ -342,11 +383,21 @@
   const GOOD = { cond: 'Baik', fill: 'Penuh' };
   const BAD = { cond: 'Rusak', fill: 'Kurang' };
 
-  function renderForm(kode) {
+  async function renderForm(kode) {
+    $('#main').innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
+    // Temuan yang masih terbuka pada kendaraan ini (terlama dulu), supaya item yang sama tidak dilaporkan dobel
+    let openTem = [];
+    try {
+      openTem = (await api('listTemuan', { status: 'Open' }, { silent: true }))
+        .filter((t) => t.kodeKendaraan === kode)
+        .sort((a, b) => (a.tanggal + a.jam).localeCompare(b.tanggal + b.jam));
+    } catch (e) { openTem = []; }
+    const temOf = {};
+    openTem.forEach((t) => { if (!temOf[t.item]) temOf[t.item] = t; });
     const v = vehicleOf(kode);
     const items = [];
     CHECKLISTS[kode].forEach((sec) => sec.items.forEach((it) => {
-      items.push({ s: sec.title, n: it.n, q: it.q || '', k: it.k, u: it.u || '', max: it.max || 0, hasil: '', nilai: '', ket: '', foto: '' });
+      items.push({ s: sec.title, n: it.n, q: it.q || '', k: it.k, u: it.u || '', max: it.max || 0, hasil: '', nilai: '', ket: '', foto: '', perbaikan: null, tem: temOf[it.n + (it.q ? ' (' + it.q + ')' : '')] || null });
     }));
     S.form = { kode: kode, items: items };
     let idx = 0;
@@ -354,11 +405,13 @@
       const start = idx;
       const rows = sec.items.map((it) => {
         const i = idx++;
+        const tem = temOf[it.n + (it.q ? ' (' + it.q + ')' : '')];
         const right = it.k === 'val'
           ? `<div class="valbox"><input class="in val" inputmode="decimal" placeholder="isi"><span>${esc(it.u)}</span></div>`
           : `<div class="seg"><button type="button" class="g" data-v="${GOOD[it.k]}">${GOOD[it.k]}</button><button type="button" class="r" data-v="${BAD[it.k]}">${BAD[it.k]}</button></div>`;
-        return `<div class="item" data-i="${i}">
-          <div class="item-top"><div class="item-name">${esc(it.n)}${it.q ? '<small>' + esc(it.q) + '</small>' : ''}</div>${right}</div>
+        return `<div class="item" data-i="${i}"${tem ? ' style="box-shadow:inset 4px 0 0 #f59e0b"' : ''}>
+          <div class="item-top"><div class="item-name">${esc(it.n)}${tem ? ' <span class="pill warn" style="margin-left:4px;white-space:nowrap">Belum diperbaiki</span>' : ''}${it.q ? '<small>' + esc(it.q) + '</small>' : ''}</div>${right}</div>
+          ${tem ? '<div class="item-open" style="margin-top:8px;padding:7px 10px;border-radius:10px;background:#fffbeb;color:#92400e;font-size:12px;font-weight:600">⚠ Masih tercatat rusak sejak ' + esc(fmtTgl(tem.tanggal)) + ' (' + hariLalu(tem.tanggal) + '), belum diperbaiki.</div>' : ''}
           <div class="item-extra hidden">
             <input class="in ket" placeholder="Jelaskan kerusakan / kekurangan…">
             <div class="photo-row"><label class="photo-btn">${ICON.cam} Foto temuan<input type="file" accept="image/*" capture="environment"></label><div class="pv hidden"></div></div>
@@ -368,6 +421,13 @@
       return `<div class="sec"><div class="sec-h"><b>${esc(sec.title)}</b>${allBtn}</div>${rows}</div>`;
     }).join('');
 
+    const panelTem = openTem.length ? `<div class="card" style="border-color:#fcd34d;background:#fffbeb">
+        <b>Belum diperbaiki di kendaraan ini (${openTem.length})</b>
+        <div class="muted small" style="margin:2px 0 8px">Jika item di bawah masih rusak, cukup tandai Rusak lagi. Laporan tidak akan dobel.</div>
+        ${openTem.map((t) => `<div style="padding:8px 0;border-top:1px solid #fde68a"><b>${esc(t.item)}</b>
+          <div class="small" style="color:#b45309">Rusak sejak ${esc(fmtTgl(t.tanggal))} (${hariLalu(t.tanggal)})${Number(t.jumlahDicek) ? ' · dicek ulang ' + esc(t.jumlahDicek) + '×' : ''}</div>
+          ${t.keterangan ? '<div class="muted small">' + esc(t.keterangan) + ' · ' + esc(t.dilaporkanOleh) + '</div>' : ''}</div>`).join('')}
+      </div>` : '';
     const opts = pjUsers().map((u) => `<option value="${esc(u.nama)}">${esc(u.nama)}${u.jabatan ? ' — ' + esc(u.jabatan) : ''}</option>`).join('');
     $('#main').innerHTML = `
       <div class="page-title"><div><button class="link" id="back">← Ganti kendaraan</button><h2>${esc(v.kode)} · ${esc(v.nama)}</h2>${kapOf(v) ? '<div class="muted small">Kapasitas tangki ' + esc(kapOf(v)) + '</div>' : ''}</div></div>
@@ -377,7 +437,8 @@
           <div><label class="f" style="margin-top:0">Penanggung jawab</label><select class="in" id="pj"><option value="">Pilih…</option>${opts}</select></div>
         </div>
       </div>
-      <div class="progress"><div style="display:flex;justify-content:space-between;font-size:13px;font-weight:700"><span id="pt">0 / ${items.length} terisi</span><span id="pb" class="muted">0 temuan</span></div><div class="bar"><i id="pbar"></i></div></div>
+      ${panelTem}
+      <div class="progress"><div style="display:flex;justify-content:space-between;font-size:13px;font-weight:700"><span id="pt">0 / ${items.length} terisi</span>${openTem.length ? '<button type="button" class="link" id="goopen" style="color:#b45309;font-weight:700;font-size:13px">⚠ ' + openTem.length + ' belum diperbaiki</button>' : ''}<span id="pb" class="muted">0 temuan</span></div><div class="bar"><i id="pbar"></i></div></div>
       <div id="secs">${secHtml}</div>
       <div class="card" style="margin-top:16px">
         <label class="f" style="margin-top:0">Lama pemanasan kendaraan & peralatan (menit)</label>
@@ -404,19 +465,71 @@
       el.classList.toggle('done', it.k === 'val' ? it.nilai.trim() !== '' : it.hasil !== '');
       $$('.seg button', el).forEach((b) => b.classList.toggle('on', b.dataset.v === it.hasil));
       $('.item-extra', el).classList.toggle('hidden', !bad);
+      const note = $('.item-open', el);
+      if (note && it.tem) {
+        const sejak = 'sejak ' + esc(fmtTgl(it.tem.tanggal)) + ' (' + hariLalu(it.tem.tanggal) + ')';
+        note.innerHTML = bad ? '✓ Dicatat masih rusak ' + sejak + '. Tidak dibuat laporan baru.'
+          : it.perbaikan ? '✓ Ditandai sudah diperbaiki: ' + esc(it.perbaikan.catatan) + '. Temuan ditutup setelah admin menyetujui.'
+          : '⚠ Masih tercatat rusak ' + sejak + ', belum diperbaiki.';
+      }
+    }
+    // Ditandai baik padahal masih ada temuan terbuka: tanya apakah benar sudah diperbaiki
+    function tanyaPerbaikan(i) {
+      const it = items[i]; const t = it.tem; let foto = '';
+      modal(`<div class="modal-h"><h3>Yakin sudah diperbaiki?</h3><button class="x" data-close>×</button></div>
+        <div style="margin-top:4px"><b>${esc(it.n)}</b> masih tercatat <b>belum diperbaiki</b> sejak ${esc(fmtTgl(t.tanggal))} (${hariLalu(t.tanggal)}). Yakin statusnya sudah diperbaiki?</div>
+        ${t.keterangan ? '<div class="muted small" style="margin-top:6px">Kerusakan yang dilaporkan: ' + esc(t.keterangan) + '</div>' : ''}
+        <label class="f">Apa yang diperbaiki / diganti? (wajib)</label>
+        <textarea class="in" id="pf-c" placeholder="Mis. selang diganti baru"></textarea>
+        <label class="f">Foto setelah diperbaiki (opsional)</label>
+        <div class="photo-row"><label class="photo-btn">${ICON.cam} Ambil foto<input type="file" accept="image/*" capture="environment" id="pf-f"></label><div class="pv hidden" id="pf-p"></div></div>
+        <button class="btn ok block" style="margin-top:18px" id="pf-y">Yakin, sudah diperbaiki</button>
+        <button class="btn ghost block" style="margin-top:10px" id="pf-n">Belum, masih rusak</button>
+        <div class="muted small" style="margin-top:10px">Temuan baru ditutup setelah admin menyetujui checklist ini.</div>`, (m, close) => {
+        $('#pf-f', m).onchange = async (e) => {
+          if (!e.target.files[0]) return;
+          try {
+            loading(true, 'Memproses foto…');
+            foto = await compress(e.target.files[0]);
+            const pv = $('#pf-p', m); pv.innerHTML = '<img src="' + foto + '" alt="foto">'; pv.classList.remove('hidden');
+          } catch (err) { toast('Foto gagal diproses', true); } finally { loading(false); }
+        };
+        $('#pf-y', m).onclick = () => {
+          const c = $('#pf-c', m).value.trim();
+          if (!c) { toast('Tulis apa yang diperbaiki', true); return; }
+          items[i].hasil = GOOD[items[i].k]; items[i].perbaikan = { catatan: c, foto: foto };
+          close(); paint(i); refresh();
+        };
+        $('#pf-n', m).onclick = () => {
+          close();
+          items[i].hasil = BAD[items[i].k]; items[i].perbaikan = null;
+          if (!items[i].ket.trim()) {
+            items[i].ket = t.keterangan || '';
+            $('.ket', $('.item[data-i="' + i + '"]', secs)).value = items[i].ket;
+          }
+          paint(i); refresh();
+        };
+      });
     }
     secs.addEventListener('click', (e) => {
       const sb = e.target.closest('.seg button');
       if (sb) {
         const i = +sb.closest('.item').dataset.i;
+        const baik = sb.dataset.v === 'Baik' || sb.dataset.v === 'Penuh';
+        if (baik && items[i].tem && !items[i].perbaikan) { tanyaPerbaikan(i); return; }
+        if (!baik) items[i].perbaikan = null;
         items[i].hasil = sb.dataset.v;
+        if ((sb.dataset.v === 'Rusak' || sb.dataset.v === 'Kurang') && items[i].tem && !items[i].ket.trim()) {
+          items[i].ket = items[i].tem.keterangan || '';
+          $('.ket', sb.closest('.item')).value = items[i].ket;
+        }
         paint(i); refresh();
         return;
       }
       const all = e.target.closest('.sec-all');
       if (all) {
         const r = all.dataset.s.split('-').map(Number);
-        for (let i = r[0]; i <= r[1]; i++) if (items[i].k !== 'val') { items[i].hasil = GOOD[items[i].k]; paint(i); }
+        for (let i = r[0]; i <= r[1]; i++) if (items[i].k !== 'val' && !items[i].tem) { items[i].hasil = GOOD[items[i].k]; paint(i); }
         refresh();
         return;
       }
@@ -445,6 +558,8 @@
       finally { loading(false); e.target.value = ''; }
     });
     $('#back').onclick = () => go('isi');
+    const goOpen = $('#goopen');
+    if (goOpen) goOpen.onclick = () => { const n = $('.item-open', secs); if (n) n.closest('.item').scrollIntoView({ behavior: 'smooth', block: 'center' }); };
     $('#send').onclick = async () => {
       const pj = $('#pj').value;
       if (!pj) { toast('Pilih penanggung jawab dulu', true); $('#pj').focus(); return; }
@@ -474,7 +589,7 @@
         loading(true, 'Mengirim data & foto…');
         const res = await api('submit', {
           kode: kode, nama: v.nama, penanggungJawab: pj, pemanasan: $('#pem').value.trim(), catatan: $('#cat').value.trim(),
-          items: items.map((x) => ({ s: x.s, n: x.n, q: x.q, k: x.k, hasil: x.hasil, nilai: x.nilai, ket: x.ket, foto: x.foto }))
+          items: items.map((x) => ({ s: x.s, n: x.n, q: x.q, k: x.k, hasil: x.hasil, nilai: x.nilai, ket: x.ket, foto: x.foto, perbaikan: x.perbaikan || null }))
         }, { silent: true });
         const tmp = res.jumlahTemuan ? res.jumlahTemuan + ' temuan dicatat. ' : '';
         toast(res.status === 'Menunggu' ? 'Terkirim. ' + tmp + 'Menunggu persetujuan admin.' : (res.jumlahTemuan ? 'Tersimpan. ' + tmp : 'Checklist tersimpan. Semua aman ✅'));
@@ -489,11 +604,28 @@
   /* ---------- TEMUAN ---------- */
   function temCard(t) {
     const open = t.status === 'Open';
+    // Riwayat: tiap pengecekan yang menemukan item ini masih rusak (terbaru di atas), ditutup laporan awal
+    const tglPendek = (x) => { const q = String(x).split('-'); return new Date(+q[0], +q[1] - 1, +q[2]).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }); };
+    let rw = [];
+    try { rw = JSON.parse(t.riwayat || '[]'); } catch (e) { rw = []; }
+    rw.sort((a, b) => (b.t + ' ' + b.j).localeCompare(a.t + ' ' + a.j));
+    const thumb = (u) => u ? `<img src="${esc(u)}" data-zoom="${esc(u)}" alt="foto" style="width:56px;height:56px;object-fit:cover;border-radius:8px;margin-top:6px;display:block">` : '';
+    const rwRow = (tgl, jam, oleh, ket, foto, label) => `<div style="padding:8px 0;border-top:1px solid #eee">
+        <div class="small"><b>${esc(fmtTgl(tgl))} ${esc(jam)}</b> · ${esc(oleh || '-')} <span class="muted">· ${label}</span></div>
+        ${ket ? '<div style="margin-top:2px">' + esc(ket) + '</div>' : ''}${thumb(foto)}</div>`;
+    const riwayatHtml = (open || rw.length) ? `<details class="tem-rw" style="margin:8px 0">
+        <summary style="cursor:pointer;font-weight:700;font-size:13px">Riwayat (${rw.length + 1} catatan)</summary>
+        ${rw.map((e) => rwRow(e.t, e.j, e.o, e.k, e.f, 'masih rusak')).join('')}
+        ${rwRow(t.tanggal, t.jam, t.dilaporkanOleh, t.keterangan, t.fotoUrl, 'laporan awal')}
+      </details>` : '';
     return `<div class="card tem" data-id="${esc(t.id)}">
       <div class="tem-img">${t.fotoUrl ? `<img loading="lazy" src="${esc(t.fotoUrl)}" data-zoom="${esc(t.fotoUrl)}" alt="foto temuan">` : 'Tanpa foto'}</div>
       <div class="tem-body">
         <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><b>${esc(t.item)}</b><span class="pill ${open ? 'bad' : 'ok'}">${open ? 'Belum' : 'Selesai'}</span></div>
         <div class="muted small">${esc(t.kodeKendaraan)} · ${esc(t.namaKendaraan)}<br>${esc(fmtTgl(t.tanggal))} ${esc(t.jam)} · ${esc(t.dilaporkanOleh)}</div>
+        ${open ? `<div class="small" style="color:#b45309"><b>Dilaporkan sejak ${esc(fmtTgl(t.tanggal))}</b> (${hariLalu(t.tanggal)})</div>` : ''}
+        ${open && rw.length ? `<div class="small" style="color:#b45309">Dicek lagi, masih rusak: ${rw.slice(0, 5).reverse().map((e) => esc(tglPendek(e.t)) + ' ' + esc(e.j)).join(' · ')}${rw.length > 5 ? ' · …' : ''}</div>` : ''}
+        ${riwayatHtml}
         ${t.keterangan ? `<p>${esc(t.keterangan)}</p>` : ''}
         ${open ? `<button class="btn ok sm" data-fix="${esc(t.id)}">Tandai selesai</button>`
           : `<div class="fixbox">${t.fotoPerbaikanUrl ? `<img src="${esc(t.fotoPerbaikanUrl)}" data-zoom="${esc(t.fotoPerbaikanUrl)}" alt="foto perbaikan">` : ''}<div><b>Diperbaiki</b> ${esc(fmtTgl(t.tglSelesai))} ${esc(t.jamSelesai)}<br>oleh ${esc(t.diperbaikiOleh)}${t.catatanPerbaikan ? '<br>' + esc(t.catatanPerbaikan) : ''}</div></div>`}
@@ -717,6 +849,7 @@
     modal(`<div class="modal-h"><h3>${esc(d.kodeKendaraan)} · ${esc(d.namaKendaraan)}</h3><button class="x" data-close>×</button></div>
       <div class="muted small">${esc(fmtTgl(d.tanggal))} ${esc(d.jam)}<br>Pelaksana: <b>${esc(d.namaPelaksana)}</b> · Penanggung jawab: <b>${esc(d.penanggungJawab)}</b>${d.pemanasanMenit ? '<br>Pemanasan: ' + esc(d.pemanasanMenit) + ' menit' : ''}${d.catatan ? '<br>Catatan: ' + esc(d.catatan) : ''}</div>
       ${d.tglDiedit ? '<div style="margin-top:8px"><span class="pill gray">Diedit</span> <span class="muted small">oleh ' + esc(d.diEditOleh || '-') + ' · ' + esc(d.tglDiedit) + '</span></div>' : ''}
+      ${Number(d.klaimPerbaikan) ? '<div style="margin-top:8px"><span class="pill ok">' + esc(d.klaimPerbaikan) + ' klaim perbaikan</span> <span class="muted small">temuan terkait ditutup saat disetujui</span></div>' : ''}
       ${(d.status || 'Disetujui') === 'Disetujui' ? '<button class="btn sm" id="dpdf" style="margin-top:12px">Unduh PDF</button>' : ''}
       ${d.status === 'Menunggu' ? '<div style="margin-top:12px"><span class="pill gray">Menunggu persetujuan admin</span></div>' : ''}
       ${d.status === 'Ditolak' ? `<div class="card libur-banner tolak" style="margin-top:12px"><b>Ditolak oleh ${esc(d.disetujuiOleh || '-')}</b><span>${esc(d.alasanTolak || '')}</span></div>` : ''}
@@ -724,8 +857,8 @@
       ${S.user.role === 'admin' ? '<div style="display:flex;gap:8px;margin-top:12px"><button class="btn ghost sm" id="dedit">Edit data</button><button class="btn ghost sm" id="ddel" style="color:var(--bad)">Hapus</button></div>' : ''}
       ${Object.keys(groups).map((g) => `<div class="dgroup">${esc(g)}</div>${groups[g].map((x) => {
         const bad = x.hasil === 'Rusak' || x.hasil === 'Kurang';
-        return `<div class="drow ${bad ? 'bad' : ''}"><div>${esc(x.n)}${x.q ? ' <span class="muted small">(' + esc(x.q) + ')</span>' : ''}${bad && x.ket ? '<br><span class="small">' + esc(x.ket) + '</span>' : ''}</div>
-          <div style="display:flex;gap:8px;align-items:center">${x.fotoUrl ? `<img src="${esc(x.fotoUrl)}" data-zoom="${esc(x.fotoUrl)}" alt="foto">` : ''}<span>${esc(x.k === 'val' ? x.nilai : x.hasil)}</span></div></div>`;
+        return `<div class="drow ${bad ? 'bad' : ''}"><div>${esc(x.n)}${x.q ? ' <span class="muted small">(' + esc(x.q) + ')</span>' : ''}${bad && x.ket ? '<br><span class="small">' + esc(x.ket) + '</span>' : ''}${x.perbaikan ? '<br><span class="small" style="color:#15803d">✓ Klaim sudah diperbaiki: ' + esc(x.perbaikan) + '</span>' : ''}${x.selisih ? '<br><span class="small" style="color:#b45309">⚠ Ditandai baik, tetapi temuan lama belum ditutup</span>' : ''}</div>
+          <div style="display:flex;gap:8px;align-items:center">${(x.fotoUrl || x.perbaikanFotoUrl) ? `<img src="${esc(x.fotoUrl || x.perbaikanFotoUrl)}" data-zoom="${esc(x.fotoUrl || x.perbaikanFotoUrl)}" alt="foto">` : ''}<span>${esc(x.k === 'val' ? x.nilai : x.hasil)}</span></div></div>`;
       }).join('')}`).join('')}`, (m, close) => {
       const bp = $('#dpdf', m); if (bp) bp.onclick = () => unduhPdf(d);
       const bs = $('#dsetuju', m); if (bs) bs.onclick = async () => { if (await setujui(d.id)) { close(); go(S.view); } };
@@ -838,28 +971,36 @@
   /* ---------- STATUS PERSETUJUAN SAYA (petugas) ---------- */
   async function viewStatus() {
     const f = S.stFilter || 'Semua';
-    const list = await api('listSaya', { status: f }, { silent: true });
-    // badge: jumlah yang ditolak (perlu diisi ulang) pada tab Status
-    const all = f === 'Semua' ? list : await api('listSaya', { status: 'Semua' }, { silent: true });
-    const nTolak = all.filter((r) => r.status === 'Ditolak').length;
+    const semua = (S.stScope || 'semua') === 'semua';
+    const mine = (r) => r.pelaksana === S.user.username;
+    const list = await api('listSaya', { status: f, semua: semua }, { silent: true });
+    // badge di tab: jumlah checklist milik sendiri yang ditolak (perlu diisi ulang)
+    const own = f === 'Semua' ? list.filter(mine) : await api('listSaya', { status: 'Semua' }, { silent: true });
+    const nTolak = own.filter((r) => r.status === 'Ditolak').length;
     const nb = $('#nb3'); if (nb) { nb.textContent = nTolak; nb.classList.toggle('hidden', !nTolak); }
+    // urut: Menunggu dulu, lalu Ditolak, lalu Disetujui; di dalamnya yang terbaru di atas
+    const rank = (r) => (r.status === 'Menunggu' ? 0 : r.status === 'Ditolak' ? 1 : 2);
+    list.sort((a, b) => rank(a) - rank(b) || (b.tanggal + b.jam).localeCompare(a.tanggal + a.jam));
     const F = ['Semua', 'Menunggu', 'Ditolak', 'Disetujui'];
     const stCls = (s) => (s === 'Disetujui' ? 'ok' : s === 'Ditolak' ? 'bad' : 'gray');
     $('#main').innerHTML = `
-      <div class="page-title"><h2>Status persetujuan saya</h2></div>
-      <p class="muted small" style="margin:0 0 12px">Checklist yang kamu kirim dalam 30 hari terakhir. Ketuk kartu untuk melihat isinya.</p>
+      <div class="page-title"><h2>Status persetujuan</h2></div>
+      <p class="muted small" style="margin:0 0 12px">${semua ? 'Status checklist semua pegawai' : 'Checklist milikmu'} dalam 30 hari terakhir. Isi lengkap hanya bisa dibuka untuk checklist milikmu.</p>
+      <div class="chips">${[['semua', 'Semua pegawai'], ['saya', 'Punya saya']].map((x) => `<button data-sc="${x[0]}" class="${(semua ? 'semua' : 'saya') === x[0] ? 'on' : ''}">${x[1]}</button>`).join('')}</div>
       <div class="chips">${F.map((x) => `<button data-sf="${x}" class="${f === x ? 'on' : ''}">${x}</button>`).join('')}</div>
       <div class="list">${list.length ? list.map((r) => {
         const s = r.status || 'Disetujui';
-        return `<div class="card hrow" data-id="${esc(r.id)}"><div class="vk">${esc(r.kodeKendaraan)}</div>
-          <div class="hi"><b>${esc(r.namaKendaraan)}</b><span class="muted small">${esc(fmtTgl(r.tanggal))} ${esc(r.jam)}</span><br><span class="muted small">PJ: ${esc(r.penanggungJawab)}</span>
+        const sendiri = mine(r);
+        return `<div class="card hrow"${sendiri ? ' data-id="' + esc(r.id) + '"' : ' style="cursor:default"'}><div class="vk">${esc(r.kodeKendaraan)}</div>
+          <div class="hi"><b>${esc(r.namaKendaraan)}</b><span class="muted small">${esc(fmtTgl(r.tanggal))} ${esc(r.jam)} · ${sendiri ? '<b>Kamu</b>' : esc(r.namaPelaksana)}</span><br><span class="muted small">PJ: ${esc(r.penanggungJawab)}</span>
             ${s === 'Ditolak' && r.alasanTolak ? `<div class="small" style="color:var(--bad);margin-top:4px">${esc(r.alasanTolak)}</div>` : ''}
             ${s === 'Disetujui' && r.disetujuiOleh ? `<div class="muted small">Disetujui oleh ${esc(r.disetujuiOleh)}</div>` : ''}
             ${r.tglDiedit ? '<div><span class="pill gray">Diedit</span></div>' : ''}
-            ${s === 'Ditolak' ? `<button class="btn sm" data-isi="${esc(r.kodeKendaraan)}" style="margin-top:8px">Isi ulang</button>` : ''}
+            ${s === 'Ditolak' && sendiri ? `<button class="btn sm" data-isi="${esc(r.kodeKendaraan)}" style="margin-top:8px">Isi ulang</button>` : ''}
           </div>
           <span class="pill ${stCls(s)}">${esc(s)}</span></div>`;
       }).join('') : '<div class="card empty">Tidak ada data.</div>'}</div>`;
+    $$('[data-sc]').forEach((b) => { b.onclick = () => { S.stScope = b.dataset.sc; go('status'); }; });
     $$('[data-sf]').forEach((b) => { b.onclick = () => { S.stFilter = b.dataset.sf; go('status'); }; });
     $$('.hrow[data-id]').forEach((c) => { c.onclick = () => detailModal(c.dataset.id); });
     $$('[data-isi]').forEach((b) => { b.onclick = (e) => { e.stopPropagation(); go('isi', b.dataset.isi); }; });
@@ -901,7 +1042,7 @@
       <div class="list">${list.map((r) => `
         <div class="card hrow" data-id="${esc(r.id)}"><div class="vk">${esc(r.kodeKendaraan)}</div>
           <div class="hi"><b>${esc(r.namaKendaraan)}</b><span class="muted small">${esc(fmtTgl(r.tanggal))} ${esc(r.jam)} · ${esc(r.namaPelaksana)}</span><br><span class="muted small">PJ: ${esc(r.penanggungJawab)}</span></div>
-          <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end"><span class="pill ${Number(r.jumlahTemuan) ? 'warn' : 'ok'}">${Number(r.jumlahTemuan) ? r.jumlahTemuan + ' temuan' : 'Aman'}</span><button class="btn ok sm" data-ok="${esc(r.id)}">Setujui</button></div></div>`).join('')}</div>`
+          <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end"><span class="pill ${Number(r.jumlahTemuan) ? 'warn' : 'ok'}">${Number(r.jumlahTemuan) ? r.jumlahTemuan + ' temuan' : 'Aman'}</span>${Number(r.klaimPerbaikan) ? '<span class="pill ok">' + esc(r.klaimPerbaikan) + ' klaim perbaikan</span>' : ''}<button class="btn ok sm" data-ok="${esc(r.id)}">Setujui</button></div></div>`).join('')}</div>`
       : '<div class="card empty">Tidak ada checklist yang menunggu persetujuan. 🎉</div>'}`;
     $$('.hrow[data-id]').forEach((c) => { c.onclick = () => detailModal(c.dataset.id); });
     $$('[data-ok]').forEach((b) => {
