@@ -1,8 +1,9 @@
 /* Daftar kendaraan & item checklist (disalin dari logbook fisik).
-   k: 'cond' = Baik/Rusak | 'fill' = Penuh/Kurang | 'val' = isian angka/teks */
+   k: 'cond' = Baik/Rusak | 'fill' = Penuh/Kurang | 'fuel' = bar bahan bakar 1-6 | 'val' = isian angka/teks */
 (function () {
   const C = (n, q) => ({ n, q, k: 'cond' });
   const F = (n, q) => ({ n, q, k: 'fill' });
+  const B = (n, q) => ({ n, q, k: 'fuel' }); // bar bahan bakar 1-6 (level 1 = merah / kurang)
   const V = (n, u) => ({ n, q: '', k: 'val', u });
   const sak = (arr) => arr.map((n) => C(n, '1 Saklar'));
 
@@ -19,12 +20,12 @@
     C('Lampu sorot', '1 Buah'), C('Radio komunikasi', '1 Buah'), C('Radiator', '1 Buah')
   ];
   const ambFluids = [
-    F('Bahan bakar', 'liter'), F('Oli mesin', 'liter'), F('Oli power steering', 'liter'), F('Air radiator', 'liter')
+    B('Bahan bakar', 'liter'), F('Oli mesin', 'liter'), F('Oli power steering', 'liter'), F('Air radiator', 'liter')
   ];
 
   const CHECKLISTS = {
     F1: [
-      { title: 'Pemeriksaan sebelum menyalakan mesin', items: [F('Oli mesin'), F('Oli power steering'), F('Transmisi'), F('Bahan bakar')] },
+      { title: 'Pemeriksaan sebelum menyalakan mesin', items: [F('Oli mesin'), F('Oli power steering'), F('Transmisi'), B('Bahan bakar')] },
       { title: 'Pemeriksaan setelah menghidupkan mesin', items: [
         V('Tekanan tabung (1)', 'psi'), V('Tekanan tabung (2)', 'psi'), V('Tekanan tabung (P)', 'psi'),
         V('Suhu oli gearbox', '°C'), V('Tegangan baterai', 'V'), V('Konsumsi bahan bakar', ' l/h')
@@ -51,7 +52,7 @@
       { title: 'Ruangan cabin atas', items: [C('Linggis', '1 Unit'), C('Hook', '1 Unit'), C('Tangga', '2 Unit'), C('Selang supply', '2 Unit')] }
     ],
     F2: [
-      { title: 'Jumlah bahan kimia', items: [F('Bahan bakar', '200 Liter'), F('Foam', '200 Liter'), F('Dry powder', '250 Kg'), F('Air', '2000 Liter')] },
+      { title: 'Jumlah bahan kimia', items: [B('Bahan bakar', '200 Liter'), F('Foam', '200 Liter'), F('Dry powder', '250 Kg'), F('Air', '2000 Liter')] },
       { title: 'Ruangan cabin pengemudi', items: [
         ...sak(['Lampu depan', 'Lampu weser', 'Lampu tanda hati-hati', 'Lampu rotari', 'Klakson trompet', 'Sirine', 'Wipper', 'Lampu sorot']),
         C('Radio komunikasi', '1 Unit')
