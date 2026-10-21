@@ -380,8 +380,21 @@
     $$('.pick').forEach((c) => { c.onclick = () => renderForm(c.dataset.k); });
   }
 
-  const GOOD = { cond: 'Baik', fill: 'Penuh' };
-  const BAD = { cond: 'Rusak', fill: 'Kurang' };
+  // fuel = bar bahan bakar 6 segmen: level 1 (merah) = Kurang (jadi temuan), level 2-6 = Penuh. Level disimpan di `nilai`.
+  const GOOD = { cond: 'Baik', fill: 'Penuh', fuel: 'Penuh' };
+  const BAD = { cond: 'Rusak', fill: 'Kurang', fuel: 'Kurang' };
+
+  function fuelBarHtml(lv) {
+    let h = '<div class="fuel">';
+    for (let n = 1; n <= 6; n++) h += `<button type="button" class="fseg${n <= lv ? ' on' : ''}" data-l="${n}" aria-label="${n} dari 6"></button>`;
+    return h + `<span class="fval">${lv ? lv + '/6' : '–'}</span></div>`;
+  }
+  function fuelPaint(el, lv) {
+    $$('.fseg', el).forEach((b) => b.classList.toggle('on', Number(b.dataset.l) <= lv));
+    const t = $('.fval', el); if (t) t.textContent = lv ? lv + '/6' : '–';
+  }
+  // Teks hasil untuk ditampilkan (detail riwayat): isian angka, bar bahan bakar "4/6", atau Baik/Rusak/Penuh/Kurang
+  const tampilHasil = (x) => (x.k === 'val' ? x.nilai : x.k === 'fuel' && x.nilai ? x.nilai + '/6' : x.hasil);
 
   async function renderForm(kode) {
     $('#main').innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
@@ -408,6 +421,7 @@
         const tem = temOf[it.n + (it.q ? ' (' + it.q + ')' : '')];
         const right = it.k === 'val'
           ? `<div class="valbox"><input class="in val" inputmode="decimal" placeholder="isi"><span>${esc(it.u)}</span></div>`
+          : it.k === 'fuel' ? fuelBarHtml(0)
           : `<div class="seg"><button type="button" class="g" data-v="${GOOD[it.k]}">${GOOD[it.k]}</button><button type="button" class="r" data-v="${BAD[it.k]}">${BAD[it.k]}</button></div>`;
         return `<div class="item" data-i="${i}"${tem ? ' style="box-shadow:inset 4px 0 0 #f59e0b"' : ''}>
           <div class="item-top"><div class="item-name">${esc(it.n)}${tem ? ' <span class="pill warn" style="margin-left:4px;white-space:nowrap">Belum diperbaiki</span>' : ''}${it.q ? '<small>' + esc(it.q) + '</small>' : ''}</div>${right}</div>
@@ -417,7 +431,7 @@
             <div class="photo-row"><label class="photo-btn">${ICON.cam} Foto temuan<input type="file" accept="image/*" capture="environment"></label><div class="pv hidden"></div></div>
           </div></div>`;
       }).join('');
-      const allBtn = sec.items.some((x) => x.k !== 'val') ? `<button type="button" class="link sec-all" data-s="${start}-${idx - 1}">Semua baik</button>` : '';
+      const allBtn = sec.items.some((x) => x.k !== 'val' && x.k !== 'fuel') ? `<button type="button" class="link sec-all" data-s="${start}-${idx - 1}">Semua baik</button>` : '';
       return `<div class="sec"><div class="sec-h"><b>${esc(sec.title)}</b>${allBtn}</div>${rows}</div>`;
     }).join('');
 
@@ -464,6 +478,7 @@
       el.classList.toggle('bad', bad);
       el.classList.toggle('done', it.k === 'val' ? it.nilai.trim() !== '' : it.hasil !== '');
       $$('.seg button', el).forEach((b) => b.classList.toggle('on', b.dataset.v === it.hasil));
+      if (it.k === 'fuel') fuelPaint(el, Number(it.nilai) || 0);
       $('.item-extra', el).classList.toggle('hidden', !bad);
       const note = $('.item-open', el);
       if (note && it.tem) {
@@ -498,11 +513,13 @@
           const c = $('#pf-c', m).value.trim();
           if (!c) { toast('Tulis apa yang diperbaiki', true); return; }
           items[i].hasil = GOOD[items[i].k]; items[i].perbaikan = { catatan: c, foto: foto };
+          if (items[i].k === 'fuel') items[i].nilai = String(items[i].pend || 6);
           close(); paint(i); refresh();
         };
         $('#pf-n', m).onclick = () => {
           close();
           items[i].hasil = BAD[items[i].k]; items[i].perbaikan = null;
+          if (items[i].k === 'fuel') items[i].nilai = '1';
           if (!items[i].ket.trim()) {
             items[i].ket = t.keterangan || '';
             $('.ket', $('.item[data-i="' + i + '"]', secs)).value = items[i].ket;
@@ -512,6 +529,22 @@
       });
     }
     secs.addEventListener('click', (e) => {
+      // Bar bahan bakar: ketuk segmen n = level n. Level 1 = Kurang (temuan), level 2-6 = Penuh.
+      const fs = e.target.closest('.fseg');
+      if (fs) {
+        const i = +fs.closest('.item').dataset.i;
+        const lv = Number(fs.dataset.l);
+        if (lv > 1 && items[i].tem && !items[i].perbaikan) { items[i].pend = lv; tanyaPerbaikan(i); return; }
+        if (lv === 1) items[i].perbaikan = null;
+        items[i].nilai = String(lv);
+        items[i].hasil = lv === 1 ? 'Kurang' : 'Penuh';
+        if (lv === 1 && items[i].tem && !items[i].ket.trim()) {
+          items[i].ket = items[i].tem.keterangan || '';
+          $('.ket', fs.closest('.item')).value = items[i].ket;
+        }
+        paint(i); refresh();
+        return;
+      }
       const sb = e.target.closest('.seg button');
       if (sb) {
         const i = +sb.closest('.item').dataset.i;
@@ -529,7 +562,7 @@
       const all = e.target.closest('.sec-all');
       if (all) {
         const r = all.dataset.s.split('-').map(Number);
-        for (let i = r[0]; i <= r[1]; i++) if (items[i].k !== 'val' && !items[i].tem) { items[i].hasil = GOOD[items[i].k]; paint(i); }
+        for (let i = r[0]; i <= r[1]; i++) if (items[i].k !== 'val' && items[i].k !== 'fuel' && !items[i].tem) { items[i].hasil = GOOD[items[i].k]; paint(i); }
         refresh();
         return;
       }
@@ -858,7 +891,7 @@
       ${Object.keys(groups).map((g) => `<div class="dgroup">${esc(g)}</div>${groups[g].map((x) => {
         const bad = x.hasil === 'Rusak' || x.hasil === 'Kurang';
         return `<div class="drow ${bad ? 'bad' : ''}"><div>${esc(x.n)}${x.q ? ' <span class="muted small">(' + esc(x.q) + ')</span>' : ''}${bad && x.ket ? '<br><span class="small">' + esc(x.ket) + '</span>' : ''}${x.perbaikan ? '<br><span class="small" style="color:#15803d">✓ Klaim sudah diperbaiki: ' + esc(x.perbaikan) + '</span>' : ''}${x.selisih ? '<br><span class="small" style="color:#b45309">⚠ Ditandai baik, tetapi temuan lama belum ditutup</span>' : ''}</div>
-          <div style="display:flex;gap:8px;align-items:center">${(x.fotoUrl || x.perbaikanFotoUrl) ? `<img src="${esc(x.fotoUrl || x.perbaikanFotoUrl)}" data-zoom="${esc(x.fotoUrl || x.perbaikanFotoUrl)}" alt="foto">` : ''}<span>${esc(x.k === 'val' ? x.nilai : x.hasil)}</span></div></div>`;
+          <div style="display:flex;gap:8px;align-items:center">${(x.fotoUrl || x.perbaikanFotoUrl) ? `<img src="${esc(x.fotoUrl || x.perbaikanFotoUrl)}" data-zoom="${esc(x.fotoUrl || x.perbaikanFotoUrl)}" alt="foto">` : ''}<span>${esc(tampilHasil(x))}</span></div></div>`;
       }).join('')}`).join('')}`, (m, close) => {
       const bp = $('#dpdf', m); if (bp) bp.onclick = () => unduhPdf(d);
       const bs = $('#dsetuju', m); if (bs) bs.onclick = async () => { if (await setujui(d.id)) { close(); go(S.view); } };
@@ -887,6 +920,7 @@
       if (it.s !== last) { rows += `<div class="dgroup">${esc(it.s)}</div>`; last = it.s; }
       const right = it.k === 'val'
         ? `<div class="valbox"><input class="in val" inputmode="decimal" value="${esc(it.nilai)}"></div>`
+        : it.k === 'fuel' ? fuelBarHtml(Number(it.nilai) || 0)
         : `<div class="seg"><button type="button" class="g" data-v="${GOOD[it.k]}">${GOOD[it.k]}</button><button type="button" class="r" data-v="${BAD[it.k]}">${BAD[it.k]}</button></div>`;
       rows += `<div class="item" data-i="${i}">
         <div class="item-top"><div class="item-name">${esc(it.n)}${it.q ? '<small>' + esc(it.q) + '</small>' : ''}</div>${right}</div>
@@ -914,10 +948,18 @@
         el.classList.toggle('bad', bad);
         el.classList.toggle('done', it.k === 'val' ? it.nilai.trim() !== '' : it.hasil !== '');
         $$('.seg button', el).forEach((b) => b.classList.toggle('on', b.dataset.v === it.hasil));
+        if (it.k === 'fuel') fuelPaint(el, Number(it.nilai) || 0);
         $('.item-extra', el).classList.toggle('hidden', !bad);
       };
       items.forEach((_, i) => paint(i));
       box.addEventListener('click', (e) => {
+        const fs = e.target.closest('.fseg');
+        if (fs) {
+          const i = +fs.closest('.item').dataset.i;
+          const lv = Number(fs.dataset.l);
+          items[i].nilai = String(lv); items[i].hasil = lv === 1 ? 'Kurang' : 'Penuh';
+          paint(i); return;
+        }
         const sb = e.target.closest('.seg button');
         if (!sb) return;
         const i = +sb.closest('.item').dataset.i;
