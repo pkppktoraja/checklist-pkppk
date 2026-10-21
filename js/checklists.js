@@ -27,7 +27,7 @@
       { title: 'Pemeriksaan sebelum menyalakan mesin', items: [F('Oli mesin'), F('Oli power steering'), F('Transmisi'), F('Bahan bakar')] },
       { title: 'Pemeriksaan setelah menghidupkan mesin', items: [
         V('Tekanan tabung (1)', 'psi'), V('Tekanan tabung (2)', 'psi'), V('Tekanan tabung (P)', 'psi'),
-        V('Suhu oli gearbox', '°C'), V('Tegangan baterai', 'V'), V('Konsumsi bahan bakar', 'mis. 3/4')
+        V('Suhu oli gearbox', '°C'), V('Tegangan baterai', 'V'), V('Konsumsi bahan bakar', ' l/h')
       ] },
       { title: 'Jumlah bahan pemadam', items: [F('Foam', '500 Liter'), F('Dry powder', '250 Kg'), F('Air', '4000 Liter')] },
       { title: 'Ruangan cabin pengemudi', items: [
