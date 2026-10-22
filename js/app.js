@@ -178,10 +178,208 @@
     if (im) { e.stopPropagation(); lightbox(im.getAttribute('data-zoom')); }
   }, true);
 
+  /* ---------- ANIMASI JARINGAN SARAF 3D (latar halaman login) ---------- */
+  // Jaringan neuron di ruang 3 dimensi: titik dekat tampak besar dan terang, titik jauh kecil dan redup.
+  // Lantai dan langit-langit berupa kisi perspektif. Kamera bergoyang pelan, kursor/jari menggeser sudut pandang (paralaks), bintang berkelip di latar,
+  // dan sinyal cahaya merambat antar neuron lalu membuatnya berpendar. Mode "kurangi gerakan" = gambar diam.
+  let netStop = null;
+  function stopNet() { if (netStop) { netStop(); netStop = null; } }
+  function startNet(cv) {
+    if (!cv || !cv.getContext) return null;
+    const ctx = cv.getContext('2d');
+    const reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    const rnd = (a, b) => a + Math.random() * (b - a);
+    const mouse = { x: -9999, y: -9999, on: false };
+    let w = 1, h = 1, cx = 0, cy = 0, link = 150, fov = 2000, R = 700, bw = 1, bh = 1, bd = 1, small = false;
+    let raf = 0, last = 0, time = 0, spawnT = 0, mxs = 0, mys = 0;
+    let c1 = 1, s1 = 0, c2 = 1, s2 = 0;
+    let nodes = [], stars = [], pulses = [];
+    const T1 = {}, T2 = {};
+
+    // proyeksi perspektif: putar (kiri-kanan lalu atas-bawah), lalu skala menurut kedalaman
+    function P(x, y, z, o) {
+      const x1 = x * c1 + z * s1, z1 = -x * s1 + z * c1;
+      const y2 = y * c2 - z1 * s2, z2 = y * s2 + z1 * c2;
+      const d = fov + z2, s = fov / (d > 40 ? d : 40);
+      o.sx = cx + x1 * s; o.sy = cy + y2 * s; o.s = s; o.z2 = z2;
+      return o;
+    }
+
+    function resize() {
+      const r = cv.getBoundingClientRect();
+      w = Math.max(1, r.width); h = Math.max(1, r.height); cx = w / 2; cy = h / 2;
+      small = w < 600;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // kotak ruang: dalamnya lebih besar dari lebarnya supaya kedalaman terasa
+      bw = w * 1.1; bh = h * 1.1; bd = Math.max(w, h) * 1.3;
+      R = Math.sqrt(bw * bw + bh * bh + bd * bd) / 2;
+      fov = R * 1.3; // makin kecil = perspektif makin kuat (dekat makin besar, jauh makin kecil)
+      const n = Math.max(130, Math.min(small ? 190 : 340, Math.round(w * h / 2600)));
+      const spacing = Math.cbrt((bw * bh * bd) / n);
+      link = spacing * 1.35;
+      while (nodes.length < n) nodes.push({ x: rnd(-bw / 2, bw / 2), y: rnd(-bh / 2, bh / 2), z: rnd(-bd / 2, bd / 2), vx: rnd(-0.2, 0.2), vy: rnd(-0.2, 0.2), vz: rnd(-0.2, 0.2), r: rnd(1.1, 2.3), fl: 0, sx: 0, sy: 0, s: 1, z2: 0, da: 1 });
+      nodes.length = n;
+      nodes.forEach((q) => {
+        q.x = Math.max(-bw / 2, Math.min(bw / 2, q.x)); q.y = Math.max(-bh / 2, Math.min(bh / 2, q.y)); q.z = Math.max(-bd / 2, Math.min(bd / 2, q.z));
+      });
+      stars = [];
+      for (let i = 0, m = Math.round(w * h / 3000); i < m; i++) stars.push({ x: rnd(0, w), y: rnd(0, h), k: rnd(0.1, 1), tw: rnd(0.5, 2.2), ph: rnd(0, 6.28) });
+      if (reduce) draw(0);
+    }
+
+    // lantai dan langit-langit berupa garis kisi yang menyempit ke kejauhan
+    function grid(yy, alpha) {
+      const NX = small ? 9 : 15, NZ = small ? 9 : 14, SEG = small ? 4 : 6;
+      const hx = bw * 0.85, z0 = -bd / 2, dz = bd / (NZ - 1);
+      const off = reduce ? 0 : (time * 0.12) % 1;
+      ctx.lineWidth = 1;
+      const seg = (ax, az, bx, bz) => {
+        P(ax, yy, az, T1); P(bx, yy, bz, T2);
+        const dep = 1 - Math.max(0, Math.min(1, ((T1.z2 + T2.z2) / 2 + R) / (2 * R)));
+        const a = alpha * (0.08 + 0.92 * dep) * (0.4 + 0.6 * Math.min(1, ((fov + T1.z2) / fov)));
+        if (a < 0.01) return;
+        ctx.strokeStyle = 'rgba(255,205,160,' + a.toFixed(3) + ')';
+        ctx.beginPath(); ctx.moveTo(T1.sx, T1.sy); ctx.lineTo(T2.sx, T2.sy); ctx.stroke();
+      };
+      for (let i = 0; i < NX; i++) { // garis memanjang ke dalam
+        const x = -hx + (2 * hx) * i / (NX - 1);
+        for (let k = 0; k < SEG; k++) seg(x, z0 + bd * k / SEG, x, z0 + bd * (k + 1) / SEG);
+      }
+      for (let j = 0; j < NZ; j++) { // garis melintang, bergeser pelan ke arah kamera
+        const z = z0 + ((j + off) % NZ) * dz;
+        for (let k = 0; k < SEG; k++) seg(-hx + 2 * hx * k / SEG, z, -hx + 2 * hx * (k + 1) / SEG, z);
+      }
+    }
+
+    function draw(dt) {
+      time += dt;
+      ctx.clearRect(0, 0, w, h);
+      // bintang di latar (paralaks mengikuti kursor)
+      const ox = mxs * 50, oy = mys * 36;
+      stars.forEach((s) => {
+        const a = 0.12 + 0.4 * s.k * (0.6 + 0.4 * Math.sin(time * s.tw + s.ph));
+        const px = (((s.x + ox * s.k) % w) + w) % w, py = (((s.y + oy * s.k) % h) + h) % h;
+        ctx.fillStyle = 'rgba(255,240,230,' + a.toFixed(3) + ')';
+        const z = 0.6 + s.k * 1.1;
+        ctx.fillRect(px, py, z, z);
+      });
+      // sudut kamera
+      const ry = (reduce ? 0.22 : Math.sin(time * 0.12) * 0.55) + mxs * 0.6, rx = 0.2 + mys * 0.4;
+      c1 = Math.cos(ry); s1 = Math.sin(ry); c2 = Math.cos(rx); s2 = Math.sin(rx);
+      grid(bh / 2, 0.2);
+      grid(-bh / 2, 0.11);
+      nodes.forEach((q) => {
+        P(q.x, q.y, q.z, q);
+        q.da = 1 - Math.max(0, Math.min(1, (q.z2 + R) / (2 * R)));
+      });
+      // garis antar neuron (jarak diukur di ruang 3D, tebal dan terang mengikuti kedekatan)
+      const links = [];
+      const nb = nodes.map(() => []);
+      const L2 = link * link;
+      for (let i = 0; i < nodes.length; i++) {
+        const a = nodes[i];
+        for (let j = i + 1; j < nodes.length; j++) {
+          const b = nodes[j];
+          const dx = a.x - b.x; if (dx > link || dx < -link) continue;
+          const dy = a.y - b.y, dz = a.z - b.z, d2 = dx * dx + dy * dy + dz * dz;
+          if (d2 < L2) {
+            const k = 1 - Math.sqrt(d2) / link, dd = (a.da + b.da) / 2;
+            links.push([i, j]); nb[i].push(j); nb[j].push(i);
+            ctx.strokeStyle = 'rgba(255,238,225,' + (0.62 * k * (0.15 + 0.85 * dd * dd)).toFixed(3) + ')';
+            ctx.lineWidth = Math.max(0.4, Math.min(2.4, (a.s + b.s) * 0.5));
+            ctx.beginPath(); ctx.moveTo(a.sx, a.sy); ctx.lineTo(b.sx, b.sy); ctx.stroke();
+          }
+        }
+        if (mouse.on) {
+          const mx = a.sx - mouse.x, my = a.sy - mouse.y, md = Math.sqrt(mx * mx + my * my);
+          if (md < 180) {
+            ctx.strokeStyle = 'rgba(255,245,215,' + (0.65 * (1 - md / 180) * (0.4 + 0.6 * a.da)).toFixed(3) + ')';
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(a.sx, a.sy); ctx.lineTo(mouse.x, mouse.y); ctx.stroke();
+          }
+        }
+      }
+      // neuron: urut dari yang jauh ke yang dekat; yang dekat besar, berpendar, dan tajam
+      nodes.slice().sort((p, q) => q.z2 - p.z2).forEach((q) => {
+        const rad = Math.min(9, q.r * q.s * (0.6 + 0.8 * q.da)), al = 0.15 + 0.85 * q.da;
+        if (q.da > 0.5) { ctx.fillStyle = 'rgba(255,225,190,' + (0.11 * q.da).toFixed(3) + ')'; ctx.beginPath(); ctx.arc(q.sx, q.sy, rad * 3.6, 0, 6.2832); ctx.fill(); }
+        if (q.fl > 0.02) {
+          ctx.strokeStyle = 'rgba(255,236,170,' + (q.fl * 0.7).toFixed(3) + ')'; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.arc(q.sx, q.sy, rad * (2.2 + (1 - q.fl) * 6), 0, 6.2832); ctx.stroke();
+          q.fl -= dt * 1.6;
+        }
+        ctx.fillStyle = 'rgba(255,246,236,' + Math.min(1, al + q.fl * 0.5).toFixed(3) + ')';
+        ctx.beginPath(); ctx.arc(q.sx, q.sy, rad * (1 + q.fl * 0.8), 0, 6.2832); ctx.fill();
+      });
+      if (reduce) return;
+      // sinyal: merambat ke neuron tetangga lalu membuatnya berpendar
+      spawnT -= dt;
+      if (spawnT <= 0 && pulses.length < 26 && links.length) {
+        const l = links[Math.floor(Math.random() * links.length)];
+        pulses.push(Math.random() < 0.5 ? { a: l[0], b: l[1], t: 0 } : { a: l[1], b: l[0], t: 0 });
+        spawnT = rnd(0.05, 0.22);
+      }
+      const keep = [];
+      pulses.forEach((p) => {
+        p.t += dt * 1.1;
+        if (p.t >= 1) {
+          nodes[p.b].fl = 1;
+          const nxt = nb[p.b].filter((k) => k !== p.a);
+          if (nxt.length && Math.random() < 0.85) keep.push({ a: p.b, b: nxt[Math.floor(Math.random() * nxt.length)], t: 0 });
+          return;
+        }
+        const A = nodes[p.a], B = nodes[p.b];
+        const x = A.sx + (B.sx - A.sx) * p.t, y = A.sy + (B.sy - A.sy) * p.t, sc = Math.min(3, A.s + (B.s - A.s) * p.t);
+        ctx.fillStyle = 'rgba(255,236,170,0.26)'; ctx.beginPath(); ctx.arc(x, y, 6.5 * sc, 0, 6.2832); ctx.fill();
+        ctx.fillStyle = 'rgba(255,248,215,0.98)'; ctx.beginPath(); ctx.arc(x, y, 2.4 * sc, 0, 6.2832); ctx.fill();
+        keep.push(p);
+      });
+      pulses = keep;
+    }
+
+    function step(t) {
+      const dt = Math.min(0.05, (t - (last || t)) / 1000);
+      last = t;
+      mxs += ((mouse.on ? mouse.x / w - 0.5 : 0) - mxs) * Math.min(1, dt * 3);
+      mys += ((mouse.on ? mouse.y / h - 0.5 : 0) - mys) * Math.min(1, dt * 3);
+      nodes.forEach((q) => {
+        q.x += q.vx * dt * 60; q.y += q.vy * dt * 60; q.z += q.vz * dt * 60;
+        if (q.x < -bw / 2 || q.x > bw / 2) q.vx *= -1;
+        if (q.y < -bh / 2 || q.y > bh / 2) q.vy *= -1;
+        if (q.z < -bd / 2 || q.z > bd / 2) q.vz *= -1;
+      });
+      draw(dt);
+      raf = requestAnimationFrame(step);
+    }
+    const onMove = (e) => { const r = cv.getBoundingClientRect(); mouse.x = e.clientX - r.left; mouse.y = e.clientY - r.top; mouse.on = mouse.x >= 0 && mouse.y >= 0 && mouse.x <= w && mouse.y <= h; };
+    const onLeave = () => { mouse.on = false; mouse.x = mouse.y = -9999; };
+    const onVis = () => {
+      if (reduce) return;
+      if (document.hidden) { cancelAnimationFrame(raf); raf = 0; } else if (!raf) { last = 0; raf = requestAnimationFrame(step); }
+    };
+    resize();
+    window.addEventListener('resize', resize);
+    window.addEventListener('pointermove', onMove, { passive: true });
+    window.addEventListener('pointerleave', onLeave);
+    window.addEventListener('blur', onLeave);
+    document.addEventListener('visibilitychange', onVis);
+    if (!reduce) raf = requestAnimationFrame(step);
+    return function stop() {
+      cancelAnimationFrame(raf); raf = 0;
+      window.removeEventListener('resize', resize);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerleave', onLeave);
+      window.removeEventListener('blur', onLeave);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }
+
   /* ---------- LOGIN ---------- */
   function renderLogin() {
     $('#app').innerHTML = `
-      <div class="login-wrap"><form class="login-card" id="lf" autocomplete="on">
+      <div class="login-wrap"><canvas class="net" id="net" aria-hidden="true"></canvas><form class="login-card" id="lf" autocomplete="on">
         <div class="logo">${ICON.fire}</div>
         <h1>Checklist Kendaraan PKP-PK</h1>
         <p class="muted" style="margin:6px 0 4px">${esc(CFG.NAMA_UNIT)} · silakan masuk</p>
@@ -192,6 +390,7 @@
         <div id="le" class="err hidden"></div>
         <button class="btn block" style="margin-top:18px" type="submit">Masuk</button>
       </form></div>`;
+    stopNet(); netStop = startNet($('#net'));
     $('#lf').addEventListener('submit', async (e) => {
       e.preventDefault();
       const f = e.target;
@@ -216,6 +415,7 @@
   /* ---------- SHELL ---------- */
   function renderShell() {
     const admin = S.user.role === 'admin';
+    stopNet(); // hentikan animasi halaman login
     $('#app').innerHTML = `
       <header class="topbar"><div class="topbar-in">
         <div class="logo">${ICON.fire}</div>
