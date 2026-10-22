@@ -120,7 +120,10 @@ textarea.in{min-height:70px;resize:vertical}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 
 /* ---------- Login ---------- */
-.login-wrap{min-height:100vh;display:grid;place-items:center;padding:20px;background:linear-gradient(160deg,#7f1d1d,var(--brand) 45%,var(--brand2))}
+.login-wrap{position:relative;overflow:hidden;min-height:100vh;display:grid;place-items:center;padding:20px;background:radial-gradient(60% 50% at 18% 12%,rgba(255,170,100,.30),transparent 70%),radial-gradient(55% 55% at 88% 85%,rgba(60,6,6,.55),transparent 72%),linear-gradient(160deg,#4a0d0d,#9c2216 48%,#e0621f)}
+.login-wrap::after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 40%,rgba(20,2,2,.45) 100%)}
+.net{position:absolute;inset:0;width:100%;height:100%;display:block}
+.login-card{position:relative;z-index:1}
 .login-card{width:100%;max-width:380px;background:var(--card);border-radius:26px;padding:28px 24px;box-shadow:0 30px 60px -30px rgba(217,45,32,.55)}
 .login-card .logo{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;width:56px;height:56px;border-radius:18px;margin-bottom:14px}
 .login-card .logo svg{width:30px;height:30px}
