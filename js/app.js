@@ -81,6 +81,8 @@
     return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate());
   }
   const vehicleOf = (k) => VEHICLES.find((v) => v.kode === k);
+  // Kode yang DITAMPILKAN (field `tampil` di VEHICLES). Kode asli (v.kode) tetap dipakai untuk data, filter, dan sheet.
+  const lbl = (k) => { const v = vehicleOf(k); return (v && v.tampil) || k; };
   // Aturan hari: entri kalender menang; selain itu Sabtu & Minggu = libur; selain itu hari kerja.
   function dayType(str) {
     const e = S.libur.find((x) => x.tanggal === str);
@@ -305,7 +307,7 @@
         <circle class="rg-bg" cx="22" cy="22" r="19"/><circle class="rg-fg" cx="22" cy="22" r="19" style="--pct:${pct}"/></svg>
         <div class="ring-t"><b>${libOnly ? 'Libur' : doneN + '/' + VEHICLES.length}</b><small>${libOnly ? '' : 'dicek'}</small></div></div>
       <div class="hero-body"><div class="hero-k">Kesiapan armada hari ini</div><div class="hero-h">${esc(msgHero)}</div>
-        <div class="bays">${VEHICLES.map((v, i) => `<div class="bay ${kondisi(v)}" style="--i:${i}" title="${esc(v.nama)}"><i></i>${esc(v.kode)}</div>`).join('')}</div></div>
+        <div class="bays">${VEHICLES.map((v, i) => `<div class="bay ${kondisi(v)}" style="--i:${i}" title="${esc(v.nama)}"><i></i>${esc(lbl(v.kode))}</div>`).join('')}</div></div>
       <div class="hero-stats">
         <div class="hs ${d.openTemuan.length ? 'warn' : ''}"><b data-n="${d.openTemuan.length}">${d.openTemuan.length}</b><span>Temuan belum diperbaiki</span></div>
         <div class="hs"><b data-n="${aktif.length}">${aktif.length}</b><span>Pengisian hari ini</span></div>
@@ -314,7 +316,7 @@
       <div class="page-title"><div><div class="muted small">${esc(fmtHariPanjang(d.tanggal))}</div><h2>${sapa()}, ${esc(S.user.nama.split(' ')[0])} 👋</h2></div></div>
       ${hari.libur ? `<div class="card libur-banner"><b>Hari ini libur · ${esc(hari.alasan)}</b><span>Pengecekan tidak diwajibkan, tetapi tetap bisa diisi bila ada.</span></div>`
           : hari.khusus ? `<div class="card libur-banner khusus"><b>Hari kerja khusus · ${esc(hari.alasan)}</b><span>Pengecekan tetap dilakukan hari ini.</span></div>` : ''}
-      ${(d.ditolakSaya || []).map((x) => `<div class="card libur-banner tolak"><b>Ditolak · ${esc(x.kodeKendaraan)} (${esc(fmtTgl(x.tanggal))} ${esc(x.jam)})</b><span>${esc(x.alasanTolak || '')}</span><div><button class="btn sm" data-isi="${esc(x.kodeKendaraan)}" style="margin-top:8px">Isi ulang</button></div></div>`).join('')}
+      ${(d.ditolakSaya || []).map((x) => `<div class="card libur-banner tolak"><b>Ditolak · ${esc(lbl(x.kodeKendaraan))} (${esc(fmtTgl(x.tanggal))} ${esc(x.jam)})</b><span>${esc(x.alasanTolak || '')}</span><div><button class="btn sm" data-isi="${esc(x.kodeKendaraan)}" style="margin-top:8px">Isi ulang</button></div></div>`).join('')}
       ${S.user.role === 'admin' && d.menunggu ? `<div class="card libur-banner"><b>${d.menunggu} checklist menunggu persetujuan</b><div><button class="btn sm" id="gosetuju" style="margin-top:8px">Tinjau sekarang</button></div></div>` : ''}
       ${hero}
       ${S.user.role !== 'admin' ? `
@@ -323,7 +325,7 @@
         ${mine.length ? mine.map((r) => {
           const s = stOf(r);
           return `<div class="appr-row">
-            <div><b>${esc(r.kodeKendaraan)}</b> <span class="muted small">${esc(r.namaKendaraan)} · ${r.tanggal !== d.tanggal ? esc(fmtTgl(r.tanggal)) + ' ' : ''}${esc(r.jam)}</span>
+            <div><b>${esc(lbl(r.kodeKendaraan))}</b> <span class="muted small">${esc(r.namaKendaraan)} · ${r.tanggal !== d.tanggal ? esc(fmtTgl(r.tanggal)) + ' ' : ''}${esc(r.jam)}</span>
               ${s === 'Ditolak' && r.alasanTolak ? `<div class="small" style="color:var(--bad)">${esc(r.alasanTolak)}</div>` : ''}
               ${s === 'Disetujui' && r.disetujuiOleh ? `<div class="muted small">Disetujui oleh ${esc(r.disetujuiOleh)}</div>` : ''}
             </div>
@@ -338,7 +340,7 @@
           const last = r ? r[r.length - 1] : null;
           const tem = r ? r.reduce((a, x) => a + Number(x.jumlahTemuan || 0), 0) : 0;
           return `<div class="card veh ${r ? 'done ' + kondisi(v) : ''}">
-            <div class="vk">${v.kode}</div>
+            <div class="vk">${esc(lbl(v.kode))}</div>
             <div class="vi"><b>${esc(v.nama)}</b>
               <span>${last ? 'Oleh ' + esc(last.namaPelaksana) + ' · ' + esc(last.jam) : (hari.libur ? 'Libur · ' + esc(hari.alasan) : 'Belum dicek')}</span></div>
             ${r ? (r.some((x) => (x.status || 'Disetujui') === 'Disetujui') ? `<span class="pill ${tem ? 'warn' : 'ok'}">${tem ? tem + ' temuan' : 'Aman'}</span>` : '<span class="pill gray">Menunggu</span>')
@@ -349,7 +351,7 @@
       <div class="section-t">Yang mengisi hari ini</div>
       <div class="card">
         ${aktif.length ? `<div class="scroll-x"><table class="tbl"><thead><tr><th>Jam</th><th>Kendaraan</th><th>Pelaksana</th><th>Penanggung jawab</th><th></th></tr></thead><tbody>
-          ${aktif.map((r) => `<tr><td>${esc(r.jam)}</td><td><b>${esc(r.kodeKendaraan)}</b> <span class="muted small">${esc(r.namaKendaraan)}</span></td><td>${esc(r.namaPelaksana)}</td><td>${esc(r.penanggungJawab)}</td>
+          ${aktif.map((r) => `<tr><td>${esc(r.jam)}</td><td><b>${esc(lbl(r.kodeKendaraan))}</b> <span class="muted small">${esc(r.namaKendaraan)}</span></td><td>${esc(r.namaPelaksana)}</td><td>${esc(r.penanggungJawab)}</td>
             <td>${(r.status || 'Disetujui') === 'Menunggu' ? '<span class="pill gray">Menunggu</span> ' : ''}${Number(r.jumlahTemuan) ? '<span class="pill warn">' + esc(r.jumlahTemuan) + ' temuan</span>' : '<span class="pill ok">Aman</span>'}</td></tr>`).join('')}
         </tbody></table></div>` : '<div class="empty" style="padding:18px">Belum ada yang mengisi hari ini.</div>'}
       </div>
@@ -375,7 +377,7 @@
     $('#main').innerHTML = `
       <div class="page-title"><h2>Pilih kendaraan</h2></div>
       <div class="grid vgrid">${VEHICLES.map((v) => `
-        <div class="card veh pick" data-k="${v.kode}"><div class="vk">${v.kode}</div>
+        <div class="card veh pick" data-k="${v.kode}"><div class="vk">${esc(lbl(v.kode))}</div>
         <div class="vi"><b>${esc(v.nama)}</b><span>${esc(v.jenis)}${kapOf(v) ? ' · Kapasitas ' + esc(kapOf(v)) : ''}</span></div></div>`).join('')}</div>`;
     $$('.pick').forEach((c) => { c.onclick = () => renderForm(c.dataset.k); });
   }
@@ -444,7 +446,7 @@
       </div>` : '';
     const opts = pjUsers().map((u) => `<option value="${esc(u.nama)}">${esc(u.nama)}${u.jabatan ? ' — ' + esc(u.jabatan) : ''}</option>`).join('');
     $('#main').innerHTML = `
-      <div class="page-title"><div><button class="link" id="back">← Ganti kendaraan</button><h2>${esc(v.kode)} · ${esc(v.nama)}</h2>${kapOf(v) ? '<div class="muted small">Kapasitas tangki ' + esc(kapOf(v)) + '</div>' : ''}</div></div>
+      <div class="page-title"><div><button class="link" id="back">← Ganti kendaraan</button><h2>${esc(lbl(v.kode))} · ${esc(v.nama)}</h2>${kapOf(v) ? '<div class="muted small">Kapasitas tangki ' + esc(kapOf(v)) + '</div>' : ''}</div></div>
       <div class="card">
         <div class="row2">
           <div><label class="f" style="margin-top:0">Pelaksana</label><input class="in" value="${esc(S.user.nama)}" disabled></div>
@@ -655,7 +657,7 @@
       <div class="tem-img">${t.fotoUrl ? `<img loading="lazy" src="${esc(t.fotoUrl)}" data-zoom="${esc(t.fotoUrl)}" alt="foto temuan">` : 'Tanpa foto'}</div>
       <div class="tem-body">
         <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><b>${esc(t.item)}</b><span class="pill ${open ? 'bad' : 'ok'}">${open ? 'Belum' : 'Selesai'}</span></div>
-        <div class="muted small">${esc(t.kodeKendaraan)} · ${esc(t.namaKendaraan)}<br>${esc(fmtTgl(t.tanggal))} ${esc(t.jam)} · ${esc(t.dilaporkanOleh)}</div>
+        <div class="muted small">${esc(lbl(t.kodeKendaraan))} · ${esc(t.namaKendaraan)}<br>${esc(fmtTgl(t.tanggal))} ${esc(t.jam)} · ${esc(t.dilaporkanOleh)}</div>
         ${open ? `<div class="small" style="color:#b45309"><b>Dilaporkan sejak ${esc(fmtTgl(t.tanggal))}</b> (${hariLalu(t.tanggal)})</div>` : ''}
         ${open && rw.length ? `<div class="small" style="color:#b45309">Dicek lagi, masih rusak: ${rw.slice(0, 5).reverse().map((e) => esc(tglPendek(e.t)) + ' ' + esc(e.j)).join(' · ')}${rw.length > 5 ? ' · …' : ''}</div>` : ''}
         ${riwayatHtml}
@@ -721,7 +723,7 @@
       const d = ymd(cur);
       if (byDate[d]) {
         out += byDate[d].map((r) => `
-          <div class="card hrow" data-id="${esc(r.id)}"><div class="vk">${esc(r.kodeKendaraan)}</div>
+          <div class="card hrow" data-id="${esc(r.id)}"><div class="vk">${esc(lbl(r.kodeKendaraan))}</div>
             <div class="hi"><b>${esc(r.namaKendaraan)}</b><span class="muted small">${esc(fmtTgl(r.tanggal))} ${esc(r.jam)} · ${esc(r.namaPelaksana)}</span><br><span class="muted small">PJ: ${esc(r.penanggungJawab)}</span>${r.tglDiedit ? ' <span class="pill gray" style="margin-left:4px">Diedit</span>' : ''}</div>
             ${(r.status || 'Disetujui') === 'Disetujui' ? `<span class="pill ${Number(r.jumlahTemuan) ? 'warn' : 'ok'}">${Number(r.jumlahTemuan) ? r.jumlahTemuan + ' temuan' : 'Aman'}</span>` : `<span class="pill ${r.status === 'Ditolak' ? 'bad' : 'gray'}">${esc(r.status)}</span>`}</div>`).join('');
       } else if (!f.kode && d < hariIni) {
@@ -743,7 +745,7 @@
     $('#main').innerHTML = `
       <div class="page-title"><h2>Riwayat pengecekan</h2></div>
       <div class="filters">
-        <select class="in" id="rk"><option value="">Semua kendaraan</option>${VEHICLES.map((v) => `<option value="${v.kode}" ${f.kode === v.kode ? 'selected' : ''}>${v.kode} · ${esc(v.nama)}</option>`).join('')}</select>
+        <select class="in" id="rk"><option value="">Semua kendaraan</option>${VEHICLES.map((v) => `<option value="${v.kode}" ${f.kode === v.kode ? 'selected' : ''}>${esc(lbl(v.kode))} · ${esc(v.nama)}</option>`).join('')}</select>
         <input class="in" type="date" id="rd" value="${f.dari}"><input class="in" type="date" id="rs" value="${f.sampai}">
       </div>
       ${S.user.role === 'admin' ? `<select class="in" id="rst" style="margin-bottom:12px">${['Disetujui', 'Menunggu', 'Ditolak', 'Semua'].map((x) => `<option value="${x}" ${f.status === x ? 'selected' : ''}>Status: ${x}</option>`).join('')}</select>` : ''}
@@ -798,7 +800,8 @@
     const unit = {};
     (CHECKLISTS[d.kodeKendaraan] || []).forEach((sec) => sec.items.forEach((it) => { if (it.u) unit[sec.title + '|' + it.n] = it.u; }));
     const items = (d.items || []).map((x) => Object.assign({}, x, { u: x.u || unit[x.s + '|' + x.n] || '' }));
-    return window.PKPPKPdf.buat(Object.assign({}, d, { items: items }), v, CFG.NAMA_UNIT);
+    // PDF memakai kode tampilan (mis. A1 <-> A2 ditukar); data asli tidak diubah
+    return window.PKPPKPdf.buat(Object.assign({}, d, { items: items, kodeKendaraan: lbl(d.kodeKendaraan) }), Object.assign({}, v, { kode: lbl(v.kode) }), CFG.NAMA_UNIT);
   }
 
   let zipLib = null;
@@ -879,7 +882,7 @@
     try { d = await api('getPemeriksaan', { id: id }); } catch (e) { toast(e.message, true); return; }
     const groups = {};
     d.items.forEach((x) => { (groups[x.s] = groups[x.s] || []).push(x); });
-    modal(`<div class="modal-h"><h3>${esc(d.kodeKendaraan)} · ${esc(d.namaKendaraan)}</h3><button class="x" data-close>×</button></div>
+    modal(`<div class="modal-h"><h3>${esc(lbl(d.kodeKendaraan))} · ${esc(d.namaKendaraan)}</h3><button class="x" data-close>×</button></div>
       <div class="muted small">${esc(fmtTgl(d.tanggal))} ${esc(d.jam)}<br>Pelaksana: <b>${esc(d.namaPelaksana)}</b> · Penanggung jawab: <b>${esc(d.penanggungJawab)}</b>${d.pemanasanMenit ? '<br>Pemanasan: ' + esc(d.pemanasanMenit) + ' menit' : ''}${d.catatan ? '<br>Catatan: ' + esc(d.catatan) : ''}</div>
       ${d.tglDiedit ? '<div style="margin-top:8px"><span class="pill gray">Diedit</span> <span class="muted small">oleh ' + esc(d.diEditOleh || '-') + ' · ' + esc(d.tglDiedit) + '</span></div>' : ''}
       ${Number(d.klaimPerbaikan) ? '<div style="margin-top:8px"><span class="pill ok">' + esc(d.klaimPerbaikan) + ' klaim perbaikan</span> <span class="muted small">temuan terkait ditutup saat disetujui</span></div>' : ''}
@@ -898,7 +901,7 @@
       const bt = $('#dtolak', m); if (bt) bt.onclick = () => tolakModal(d.id, () => { close(); go(S.view); });
       const be = $('#dedit', m); if (be) be.onclick = () => editModal(d, () => { close(); go(S.view); });
       const bd = $('#ddel', m); if (bd) bd.onclick = async () => {
-        if (!confirm('Hapus pengecekan ' + d.kodeKendaraan + ' (' + fmtTgl(d.tanggal) + ' ' + d.jam + ')?\nTemuan terkait dan fotonya ikut terhapus. Tidak bisa dibatalkan.')) return;
+        if (!confirm('Hapus pengecekan ' + lbl(d.kodeKendaraan) + ' (' + fmtTgl(d.tanggal) + ' ' + d.jam + ')?\nTemuan terkait dan fotonya ikut terhapus. Tidak bisa dibatalkan.')) return;
         try {
           loading(true, 'Menghapus…');
           await api('deletePemeriksaan', { id: d.id }, { silent: true });
@@ -931,7 +934,7 @@
         </div></div>`;
     });
     modal(`<div class="modal-h"><h3>Edit pengecekan</h3><button class="x" data-close>×</button></div>
-      <div class="muted small">${esc(d.kodeKendaraan)} · ${esc(fmtTgl(d.tanggal))} ${esc(d.jam)} · pelaksana ${esc(d.namaPelaksana)}.<br>Setelah disimpan, data ditandai <b>Diedit</b>.</div>
+      <div class="muted small">${esc(lbl(d.kodeKendaraan))} · ${esc(fmtTgl(d.tanggal))} ${esc(d.jam)} · pelaksana ${esc(d.namaPelaksana)}.<br>Setelah disimpan, data ditandai <b>Diedit</b>.</div>
       <label class="f">Penanggung jawab</label>
       <select class="in" id="ep">${names.map((n) => `<option value="${esc(n)}" ${n === d.penanggungJawab ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>
       <label class="f">Lama pemanasan (menit)</label>
@@ -1033,7 +1036,7 @@
       <div class="list">${list.length ? list.map((r) => {
         const s = r.status || 'Disetujui';
         const sendiri = mine(r);
-        return `<div class="card hrow"${sendiri ? ' data-id="' + esc(r.id) + '"' : ' style="cursor:default"'}><div class="vk">${esc(r.kodeKendaraan)}</div>
+        return `<div class="card hrow"${sendiri ? ' data-id="' + esc(r.id) + '"' : ' style="cursor:default"'}><div class="vk">${esc(lbl(r.kodeKendaraan))}</div>
           <div class="hi"><b>${esc(r.namaKendaraan)}</b><span class="muted small">${esc(fmtTgl(r.tanggal))} ${esc(r.jam)} · ${sendiri ? '<b>Kamu</b>' : esc(r.namaPelaksana)}</span><br><span class="muted small">PJ: ${esc(r.penanggungJawab)}</span>
             ${s === 'Ditolak' && r.alasanTolak ? `<div class="small" style="color:var(--bad);margin-top:4px">${esc(r.alasanTolak)}</div>` : ''}
             ${s === 'Disetujui' && r.disetujuiOleh ? `<div class="muted small">Disetujui oleh ${esc(r.disetujuiOleh)}</div>` : ''}
@@ -1082,7 +1085,7 @@
       <div class="page-title"><h2>Persetujuan checklist</h2></div>
       ${list.length ? `<p class="muted small" style="margin:0 0 12px">Hanya checklist yang disetujui yang masuk Riwayat dan bisa diunduh PDF-nya. Ketuk kartu untuk melihat isinya.</p>
       <div class="list">${list.map((r) => `
-        <div class="card hrow" data-id="${esc(r.id)}"><div class="vk">${esc(r.kodeKendaraan)}</div>
+        <div class="card hrow" data-id="${esc(r.id)}"><div class="vk">${esc(lbl(r.kodeKendaraan))}</div>
           <div class="hi"><b>${esc(r.namaKendaraan)}</b><span class="muted small">${esc(fmtTgl(r.tanggal))} ${esc(r.jam)} · ${esc(r.namaPelaksana)}</span><br><span class="muted small">PJ: ${esc(r.penanggungJawab)}</span></div>
           <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end"><span class="pill ${Number(r.jumlahTemuan) ? 'warn' : 'ok'}">${Number(r.jumlahTemuan) ? r.jumlahTemuan + ' temuan' : 'Aman'}</span>${Number(r.klaimPerbaikan) ? '<span class="pill ok">' + esc(r.klaimPerbaikan) + ' klaim perbaikan</span>' : ''}<button class="btn ok sm" data-ok="${esc(r.id)}">Setujui</button></div></div>`).join('')}</div>`
       : '<div class="card empty">Tidak ada checklist yang menunggu persetujuan. 🎉</div>'}`;
