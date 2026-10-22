@@ -46,6 +46,13 @@
 
   const isBad = (x) => x.hasil === 'Rusak' || x.hasil === 'Kurang';
 
+  // Teks kolom Keterangan. Bahan bakar (bar 1-6) selalu menampilkan levelnya; keterangan kerusakan ditambahkan bila ada.
+  function ketTeks(it) {
+    const lv = it.k === 'fuel' && it.nilai ? 'Level ' + it.nilai + ' dari 6' : '';
+    const ket = isBad(it) ? String(it.ket || '').trim() : '';
+    return lv && ket ? lv + ' - ' + ket : (lv || ket);
+  }
+
   function groupSections(items) {
     const out = [];
     const idx = {};
@@ -60,7 +67,7 @@
   function sectionLabels(sec) {
     const kinds = {};
     sec.items.forEach(function (x) { kinds[x.k] = true; });
-    const cond = kinds.cond, fill = kinds.fill, val = kinds.val;
+    const cond = kinds.cond, fill = kinds.fill || kinds.fuel, val = kinds.val; // bahan bakar (fuel) dihitung Penuh/Kurang
     if (val && !cond && !fill) return { val: true, a: 'Nilai', b: '' };
     if (cond && fill) return { a: 'Baik/Penuh', b: 'Rusak/Kurang' };
     if (fill) return { a: 'Penuh', b: 'Kurang' };
@@ -276,7 +283,7 @@
         doc.setFontSize(8.5);
         const nameLines = doc.splitTextToSize(T(it.n), COL.name - 3.2);
         doc.setFontSize(7.5);
-        const ket = isBad(it) ? it.ket : '';
+        const ket = ketTeks(it);
         const ketLines = ket ? doc.splitTextToSize(T(ket), COL.ket - 3.2) : [];
         const h = Math.max(ROW_MIN, nameLines.length * 3.6 + 2, ketLines.length * 3.2 + 2.2);
         return { it: it, no: i + 1, nameLines: nameLines, ketLines: ketLines, h: h };
