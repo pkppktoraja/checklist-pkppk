@@ -379,7 +379,7 @@
   /* ---------- LOGIN ---------- */
   function renderLogin() {
     $('#app').innerHTML = `
-      <div class="login-wrap"><canvas class="net" id="net" aria-hidden="true"></canvas><form class="login-card" id="lf" autocomplete="on">
+      <div class="login-wrap" style="position:relative;overflow:hidden;min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding:20px;background:radial-gradient(60% 50% at 18% 12%,rgba(255,170,100,.30),transparent 70%),radial-gradient(55% 55% at 88% 85%,rgba(60,6,6,.55),transparent 72%),linear-gradient(160deg,#4a0d0d,#9c2216 48%,#e0621f)"><canvas class="net" id="net" aria-hidden="true" style="position:absolute;left:0;top:0;width:100%;height:100%;display:block;pointer-events:none"></canvas><form class="login-card" id="lf" autocomplete="on" style="position:relative;z-index:1">
         <div class="logo">${ICON.fire}</div>
         <h1>Checklist Kendaraan PKP-PK</h1>
         <p class="muted" style="margin:6px 0 4px">${esc(CFG.NAMA_UNIT)} · silakan masuk</p>
