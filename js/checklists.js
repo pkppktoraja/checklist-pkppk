@@ -10,8 +10,8 @@
   const VEHICLES = [
     { kode: 'F1', nama: 'Scania / Foam Tender', jenis: 'Foam Tender' },
     { kode: 'F2', nama: 'Hino / Foam Tender', jenis: 'Foam Tender' },
-    { kode: 'A1', nama: 'KIA Travello / Ambulance', jenis: 'Ambulance' },
-    { kode: 'A2', nama: 'Suzuki APV / Ambulance', jenis: 'Ambulance' },
+    { kode: 'A1', nama: 'Suzuki APV / Ambulance', jenis: 'Ambulance' },
+    { kode: 'A2', nama: 'KIA Travello / Ambulance', jenis: 'Ambulance' },
     { kode: 'WT', nama: 'Isuzu Elf / Water Tank Car', jenis: 'Water Tank' }
   ];
 
@@ -75,7 +75,7 @@
       ] },
       { title: 'Ruangan cabin atas', items: [C('Selang suction', '3 Unit'), C('Hook', '1 Unit'), C('Tangga', '1 Unit'), C('Turret', '2 Unit')] }
     ],
-    A1: [
+    A2: [
       { title: 'Jumlah bahan bakar & cairan', items: ambFluids },
       { title: 'Ruangan cabin pengemudi', items: ambCabin },
       { title: 'Perlengkapan kendaraan', items: [C('Kunci roda', '1 Unit'), C('Dongkrak', '1 Unit'), C('Ban cadangan', '1 Buah')] },
@@ -88,7 +88,7 @@
         C('Guedel airway', '1 Paket'), C('Penyangga leher', '1 Set'), C('Tandu', '2 Buah'), C('Stetoskop', '2 Buah'), C('Kantong mayat', '10 Buah')
       ] }
     ],
-    A2: [
+    A1: [
       { title: 'Jumlah bahan bakar & cairan', items: ambFluids },
       { title: 'Ruangan cabin pengemudi', items: ambCabin },
       { title: 'Perlengkapan medis', items: [
