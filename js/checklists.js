@@ -12,7 +12,8 @@
     { kode: 'F2', nama: 'Hino / Foam Tender', jenis: 'Foam Tender' },
     { kode: 'A1', nama: 'Suzuki APV / Ambulance', jenis: 'Ambulance' },
     { kode: 'A2', nama: 'KIA Travello / Ambulance', jenis: 'Ambulance' },
-    { kode: 'WT', nama: 'Isuzu Elf / Water Tank Car', jenis: 'Water Tank' }
+    { kode: 'WT', nama: 'Isuzu Elf / Water Tank Car', jenis: 'Water Tank' },
+    { kode: 'C1', nama: 'Toyota Hilux / Nurse Tender', jenis: 'Nurse Tender' }
   ];
 
   const ambCabin = [
@@ -106,6 +107,15 @@
         C('Baju tahan panas', '1 Buah'), C('Sepatu boots', '1 Buah'), C('Sarung tangan', '1 Buah')
       ] },
       { title: 'Peralatan tambahan', items: [C('Selang pemancar 30 M', '3 Buah'), C('Nozzel', '1 Buah'), C('Selang spiral', '10 M'), C('Stop kran', '1 Buah')] }
+    ],
+    // Nurse Tender: Toyota Hilux (log book C1)
+    C1: [
+      { title: 'Jumlah bahan bakar & cairan', items: ambFluids },
+      { title: 'Ruangan cabin pengemudi', items: [
+        ...sak(['Lampu depan', 'Lampu weser', 'Lampu tanda hati-hati', 'Lampu rotari', 'Klakson kecil', 'Sirine', 'Wipper']),
+        C('Lampu sorot', '1 Buah'), C('Radio komunikasi', '1 Buah')
+      ] },
+      { title: 'Perlengkapan kendaraan', items: [C('Kunci roda', '1 Unit'), C('Dongkrak', '1 Unit'), C('Selang suplai', '3 Buah'), C('Ban cadangan', '1 Buah')] }
     ]
   };
 
