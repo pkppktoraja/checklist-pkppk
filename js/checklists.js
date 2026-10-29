@@ -115,7 +115,7 @@
         ...sak(['Lampu depan', 'Lampu weser', 'Lampu tanda hati-hati', 'Lampu rotari', 'Klakson kecil', 'Sirine', 'Wipper']),
         C('Lampu sorot', '1 Buah'), C('Radio komunikasi', '1 Buah')
       ] },
-      { title: 'Perlengkapan kendaraan', items: [C('Kunci roda', '1 Unit'), C('Dongkrak', '1 Unit'), C('Selang suplai', '3 Buah'), C('Ban cadangan', '1 Buah')] }
+      { title: 'Perlengkapan kendaraan', items: [C('Kunci roda', '1 Unit'), C('Dongkrak', '1 Unit'), C('APAR', '3 Buah'), C('Ban cadangan', '1 Buah')] }
     ]
   };
 
