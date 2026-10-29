@@ -20,7 +20,10 @@
   X.end = X.ket + COL.ket; // harus sama dengan M + TW
 
   const ROW_MIN = 5.2, SEC_H = 5.8, HEAD_H = 6.2;
-  const LIMIT_Y = PH - 15; // batas bawah isi (sisakan ruang nomor halaman)
+  // Batas bawah isi. Dibuat longgar (24 mm dari tepi kertas) karena banyak printer
+  // tidak bisa mencetak 5-6 mm terakhir di tepi bawah; nomor halaman ada di bawah batas ini.
+  const LIMIT_Y = PH - 24;
+  const FOOT_Y = PH - 12; // posisi teks nomor halaman
   const LINE = 0.2;
 
   // Teks hanya boleh karakter Latin-1 (font bawaan PDF); sisanya diganti supaya tidak jadi simbol aneh.
@@ -226,9 +229,13 @@
     return M + 9;
   }
 
+  // Tinggi blok catatan + tanda tangan (dipakai juga untuk menentukan perlu halaman baru atau tidak)
+  const CAT_H = 19, SIG_H = 30, FOOT_GAP = 5;
+  const FOOT_TOTAL = FOOT_GAP + CAT_H + 4 + SIG_H;
+
   function footerBlock(doc, y, d) {
     // Kotak catatan selebar tabel (TW)
-    const catH = 19;
+    const catH = CAT_H;
     cellBox(doc, M, y, TW, catH);
     doc.setTextColor(0, 0, 0);
     doc.setFont('helvetica', 'bold');
@@ -241,7 +248,7 @@
     y += catH + 4;
 
     // Tanda tangan: dua kotak bersebelahan, satu blok utuh
-    const sh = 30, half = TW / 2;
+    const sh = SIG_H, half = TW / 2;
     const sig = [['Pelaksana', d.namaPelaksana], ['Penanggung Jawab', d.penanggungJawab]];
     sig.forEach(function (s, i) {
       const x = M + i * half;
@@ -301,9 +308,9 @@
       });
     });
 
-    // Catatan + tanda tangan dijaga tetap utuh dalam satu halaman.
-    if (y + 4 + 19 + 4 + 30 > LIMIT_Y + 8) { doc.addPage(); y = miniHeader(doc, d, v) - 3; }
-    footerBlock(doc, y + 5, d);
+    // Catatan + tanda tangan dijaga tetap utuh dalam satu halaman, dan tidak melewati batas bawah (LIMIT_Y).
+    if (y + FOOT_TOTAL > LIMIT_Y) { doc.addPage(); y = miniHeader(doc, d, v) - 3; }
+    footerBlock(doc, y + FOOT_GAP, d);
 
     const n = doc.getNumberOfPages();
     for (let i = 1; i <= n; i++) {
@@ -311,8 +318,8 @@
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7.5);
       doc.setTextColor(110, 110, 110);
-      doc.text(T('Checklist Kendaraan PKP-PK - ' + v.kode + ' - ' + (d.tanggal || '')), M, PH - 8);
-      doc.text('Halaman ' + i + ' dari ' + n, M + TW, PH - 8, { align: 'right' });
+      doc.text(T('Checklist Kendaraan PKP-PK - ' + v.kode + ' - ' + (d.tanggal || '')), M, FOOT_Y);
+      doc.text('Halaman ' + i + ' dari ' + n, M + TW, FOOT_Y, { align: 'right' });
     }
     doc.setTextColor(0, 0, 0);
     return doc;
